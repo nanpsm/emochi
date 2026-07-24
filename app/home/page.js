@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
+import { signOut } from "next-auth/react";
 
 const INK = "#1a1a2e";
 
@@ -9,57 +11,57 @@ const CHARS = [
   {
     id: "cheer", name: "Cheer", color: "#FFC53D", file: "Cheer.png", isMain: false, imgH: 270, level: 4,
     role: "Joy & Enthusiasm",
-    desc: "Your inner cheerleader. Cheer finds the bright side in any situation and keeps your spirits high when things feel heavy.",
+    intro: "Hey! I'm Cheer — your inner cheerleader! I find the bright side in every situation and keep your energy up when things feel heavy. Every win, no matter how small, deserves to be celebrated. When you're ready to give up, I'm the voice that says keep going. You've got this, and I'll be right here!",
     traits: ["Boosts motivation", "Celebrates every win", "Spreads positive energy", "Keeps you moving forward"],
   },
   {
     id: "fear", name: "Fear", color: "#A78BFA", file: "Fear.png", isMain: false, imgH: 270, level: 3,
     role: "Caution & Awareness",
-    desc: "Fear isn't the enemy — they're your early-warning system. They spot danger before it arrives and keep you safe.",
+    intro: "I'm Fear. I know that sounds scary — but hear me out. I'm actually your early-warning system. I notice danger before it reaches you, keep you sharp, and make sure you never walk into something unprepared. Without me, you'd take risks you'd regret. I'm not here to stop you — I'm here to protect you.",
     traits: ["Risk detection", "Protective instincts", "Heightens awareness", "Prepares for the unexpected"],
   },
   {
     id: "buzzy", name: "Buzzy", color: "#FF6B4A", file: "Buzzy.png", isMain: false, imgH: 270, level: 5,
     role: "Anger & Drive",
-    desc: "Buzzy channels frustration into fuel. When things feel unfair, Buzzy steps up to set boundaries and push through.",
+    intro: "Name's Buzzy. I take all that frustration you feel and turn it into fuel. When something's unfair, I don't stay quiet — I set limits, push back, and get things done. A lot of people fear me, but without drive and fire, nothing ever changes. Channel me right and we'll move mountains.",
     traits: ["Sets clear limits", "Turns frustration into action", "Fights for what's right", "Raw, unstoppable energy"],
   },
   {
     id: "tear", name: "Tear", color: "#4A90D9", file: "Tear.png", isMain: false, imgH: 270, level: 3,
     role: "Sadness & Empathy",
-    desc: "Tear helps you sit with what hurts. They process grief with grace and connect deeply to the feelings of others.",
+    intro: "I'm Tear. I help you feel what needs to be felt — grief, loss, longing. I don't make you sad. I make sure sadness doesn't stay trapped inside you. When you let me flow, you heal. I also make you deeply human — able to feel what others carry. That empathy? That's one of your greatest strengths.",
     traits: ["Deep emotional processing", "Compassion for others", "Slows down to reflect", "Healing through feeling"],
   },
   {
     id: "wisey", name: "Wisey", color: "#C9A857", file: "Wisey.png", isMain: true, imgH: 360, level: 8, noLevel: true,
     role: "Wisdom & Balance",
-    desc: "Wisey is your inner guide — the voice that weighs all sides before speaking. They keep the whole crew in harmony.",
+    intro: "I'm Wisey. I hold this whole crew together. When the others argue, I listen to every side before I speak. I've witnessed what happens when emotions go unchecked — and I know what balance truly looks like. I'm not the loudest voice in here, but I'm the one you reach for when it really matters.",
     traits: ["Calm under pressure", "Sees the bigger picture", "Mediates conflicts", "Leads with reason and heart"],
   },
   {
     id: "zen", name: "Zen", color: "#5FD4C4", file: "Zen.png", isMain: false, imgH: 270, level: 6,
     role: "Peace & Mindfulness",
-    desc: "Zen brings stillness to the storm. In moments of chaos, they guide you back to your breath and the present moment.",
+    intro: "Hey... breathe. I'm Zen. When everything around you is chaos, I'm the stillness inside. I guide you back to your breath, back to right now. The past is gone. The future isn't here yet. This moment — right here — is where I live. Let me show you how to find calm no matter what storm you're in.",
     traits: ["Grounds racing thoughts", "Slows the spiral", "Finds calm in chaos", "Present-moment awareness"],
   },
   {
     id: "bubble", name: "Bubble", color: "#F97316", file: "Bubble.png", isMain: false, imgH: 270, level: 4,
     role: "Excitement & Creativity",
-    desc: "Bubble overflows with ideas and curiosity. They turn ordinary moments into adventures and spark creative breakthroughs.",
+    intro: "Oh hi hi hi! I'm Bubble and I am SO excited to meet you! I see magic in everything — ordinary moments turn into adventures when I'm around. I'm the spark behind your wildest ideas and the reason you keep asking 'what if?' Life is too short to be boring, so let's make it an adventure!",
     traits: ["Endless curiosity", "Creative problem-solving", "Contagious excitement", "Sees magic in the mundane"],
   },
   {
     id: "dozy", name: "Dozy", color: "#6C7A96", file: "Dozy.png", isMain: false, imgH: 270, level: 2,
     role: "Rest & Recovery",
-    desc: "Dozy knows that rest is not laziness — it's repair. They remind you to recharge before you burn out completely.",
+    intro: "Psst... hey. I'm Dozy. I know everyone ignores me until it's too late. But rest isn't laziness — it's how you repair. Your body and mind need to stop sometimes. You can't pour from an empty cup. I signal exhaustion early so you don't burn out completely. Listen to me before the crash, not after.",
     traits: ["Prioritizes recovery", "Signals exhaustion early", "Slows the pace", "Protects your energy"],
   },
 ];
 
-const STATS = [
-  { icon: "🌙", label: "Sleep", short: "7.5h", pct: 94, color: "#8b5cf6" },
-  { icon: "💼", label: "Work",  short: "6h",   pct: 79, color: "#f59e0b" },
-  { icon: "😊", label: "Mood",  short: "😊",   pct: 88, color: "#22c55e" },
+const EMPTY_STATS = [
+  { icon: "🌙", label: "Sleep", short: "—", pct: 0, color: "#8b5cf6" },
+  { icon: "💼", label: "Work",  short: "—", pct: 0, color: "#f59e0b" },
+  { icon: "😊", label: "Mood",  short: "—", pct: 0, color: "#22c55e" },
 ];
 
 const FRIENDS = [
@@ -70,16 +72,153 @@ const FRIENDS = [
   { id: 5, name: "James",  emoji: "🐸", bg: "#5FD4C4", online: false, mood: "😐 Meh"    },
 ];
 
+// ── Daily check-in scoring tables ─────────────────────────────
+// Agent name keys map to CHARS ids: Cheer, Fear, Buzzy, Tear, Zen, Bubble, Dozy
+
+const FEELINGS = [
+  { name: "Happy",   emoji: "😊", deltas: { Cheer: 3, Tear: -3 } },
+  { name: "Excited", emoji: "⚡", deltas: { Cheer: 3, Dozy: -2 } },
+  { name: "Hopeful", emoji: "🌟", deltas: { Cheer: 3, Zen: 2, Fear: -2 } },
+  { name: "Calm",    emoji: "😌", deltas: { Zen: 3, Buzzy: -3 } },
+  { name: "Stressed",emoji: "😤", deltas: { Buzzy: 3, Zen: -3 } },
+  { name: "Anxious", emoji: "😰", deltas: { Fear: 3, Buzzy: 2, Zen: -2 } },
+  { name: "Worried", emoji: "😟", deltas: { Fear: 3, Cheer: -2 } },
+  { name: "Sad",     emoji: "😢", deltas: { Tear: 3, Cheer: -3 } },
+  { name: "Tired",   emoji: "😴", deltas: { Dozy: 3, Cheer: -2 } },
+  { name: "Lonely",  emoji: "🥺", deltas: { Tear: 2, Bubble: 3, Cheer: -2 } },
+];
+
+const SLEEP_OPTIONS = [
+  { label: "Less than 5 hrs", sub: "Poor sleep",    short: "<5h",  pct: 28, deltas: { Dozy: 3, Buzzy: 2, Zen: -2 } },
+  { label: "5–6 hrs",         sub: "Below average", short: "5-6h", pct: 58, deltas: { Dozy: 2 } },
+  { label: "7–9 hrs",         sub: "Healthy range", short: "7-9h", pct: 92, deltas: { Zen: 3, Cheer: 2, Buzzy: -2 } },
+  { label: "More than 9 hrs", sub: "Oversleep",     short: ">9h",  pct: 68, deltas: { Dozy: 2 } },
+];
+
+const WORK_OPTIONS = [
+  { label: "0–3 hrs",          sub: "Light day",  short: "0-3h",  pct: 22,  deltas: { Dozy: 2, Buzzy: -2 } },
+  { label: "4–7 hrs",          sub: "Balanced",   short: "4-7h",  pct: 55,  deltas: {} },
+  { label: "8–10 hrs",         sub: "Heavy day",  short: "8-10h", pct: 82,  deltas: { Buzzy: 3, Zen: -2 } },
+  { label: "More than 10 hrs", sub: "Overloaded", short: ">10h",  pct: 100, deltas: { Buzzy: 3, Dozy: 2, Cheer: -2 } },
+];
+
+// mood score per feeling (for the Mood donut)
+const FEELING_MOOD = {
+  Happy:   { emoji: "😊", pct: 90 },
+  Excited: { emoji: "😄", pct: 85 },
+  Hopeful: { emoji: "🌟", pct: 80 },
+  Calm:    { emoji: "😌", pct: 75 },
+  Stressed:{ emoji: "😤", pct: 38 },
+  Anxious: { emoji: "😰", pct: 32 },
+  Worried: { emoji: "😟", pct: 28 },
+  Sad:     { emoji: "😢", pct: 22 },
+  Tired:   { emoji: "😴", pct: 45 },
+  Lonely:  { emoji: "🥺", pct: 33 },
+};
+
+function getMoodStat(feelingIdxs) {
+  if (!feelingIdxs.length) return { emoji: "😐", pct: 50 };
+  const moods = feelingIdxs.map(i => FEELING_MOOD[FEELINGS[i].name]);
+  const pct = Math.round(moods.reduce((s, m) => s + m.pct, 0) / moods.length);
+  return { emoji: moods[0].emoji, pct };
+}
+
+const CHAR_COLOR = {
+  Cheer: "#FFC53D", Fear: "#A78BFA", Buzzy: "#FF6B4A",
+  Tear: "#4A90D9", Zen: "#5FD4C4", Bubble: "#F97316", Dozy: "#6C7A96",
+};
+
+function getWiseySuggestions(stats) {
+  const sleep = stats.find(s => s.label === "Sleep");
+  const work  = stats.find(s => s.label === "Work");
+  const mood  = stats.find(s => s.label === "Mood");
+  if (!sleep || sleep.pct === 0) {
+    return [
+      "Start your day right — complete your daily check-in!",
+      "I'm here whenever you're ready to reflect on your day.",
+      "Check in to unlock personalized insights just for you.",
+    ];
+  }
+  const tips = [];
+  if (sleep.pct < 60)  tips.push("You didn't sleep enough. Try to rest a bit earlier tonight.");
+  if (sleep.pct >= 85) tips.push("Great sleep! Your mind is sharp — tackle something important today.");
+  if (work.pct >= 80)  tips.push("Heavy work day. Remember to take a break every 90 minutes.");
+  if (work.pct < 30)   tips.push("Light schedule today — a great chance to recharge or do something creative.");
+  if (mood.pct < 40)   tips.push("Your mood seems low. A short walk or kind conversation can help.");
+  if (mood.pct >= 80)  tips.push("You're in great spirits! Share that energy with someone who needs it.");
+  if (mood.pct >= 50 && mood.pct < 80) tips.push("Steady day ahead. Stay grounded and focus on what matters most.");
+  if (tips.length === 0) tips.push("Balance is your strength today. Keep that rhythm going.");
+  return tips;
+}
+
+function getCheckinDate() {
+  const now = new Date();
+  if (now.getHours() < 6) now.setDate(now.getDate() - 1);
+  return now.toISOString().split("T")[0];
+}
+
+function getRecentDates() {
+  const dates = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    if (d.getHours() < 6) d.setDate(d.getDate() - 1);
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().split("T")[0];
+    const label = i === 0 ? "Today" : i === 1 ? "Yesterday"
+      : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    dates.push({ key, label });
+  }
+  return dates;
+}
+
+function getHistoryScores(dateKey) {
+  try {
+    const raw = typeof window !== "undefined" && localStorage.getItem(`emochi_checkin_${dateKey}`);
+    if (!raw) return null;
+    const { feelingIdxs, sleepIdx, workIdx } = JSON.parse(raw);
+    const deltas = calcDeltas(feelingIdxs ?? [], sleepIdx ?? null, workIdx ?? null);
+    return CHARS
+      .filter(c => !c.noLevel)
+      .map(c => ({ ...c, score: c.level + (deltas[c.name] ?? 0) }))
+      .sort((a, b) => b.score - a.score);
+  } catch { return null; }
+}
+
+function calcDeltas(selectedFeelings, sleepIdx, workIdx) {
+  const total = {};
+  const apply = (d) => Object.entries(d).forEach(([k, v]) => { total[k] = (total[k] || 0) + v; });
+  selectedFeelings.forEach((i) => apply(FEELINGS[i].deltas));
+  if (sleepIdx !== null) apply(SLEEP_OPTIONS[sleepIdx].deltas);
+  if (workIdx  !== null) apply(WORK_OPTIONS[workIdx].deltas);
+  return total;
+}
+
+// ── Main page ─────────────────────────────────────────────────
+
 export default function MainPage() {
   const [scale, setScale]           = useState(1);
   const [friendsOpen, setFriends]   = useState(false);
+  const [historyOpen, setHistory]   = useState(false);
+  const [historyDate, setHistoryDate] = useState(getCheckinDate);
   const [hovChar, setHovChar]       = useState(null);
   const [charPopup, setCharPopup]   = useState(null);
   const [profileOpen, setProfile]   = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [avatar, setAvatar]         = useState("wisey");
   const [userName, setUserName]     = useState("You");
   const [editName, setEditName]     = useState("You");
   const [editAvatar, setEditAvatar] = useState("wisey");
+
+  // Daily check-in state
+  const [stats, setStats]                       = useState(EMPTY_STATS);
+  const [checkinOpen, setCheckinOpen]           = useState(false);
+  const [checkinStep, setCheckinStep]           = useState(1);
+  const [selectedFeelings, setSelectedFeelings] = useState([]);
+  const [selectedSleep, setSelectedSleep]       = useState(null);
+  const [selectedWork, setSelectedWork]         = useState(null);
+  const [checkinDone, setCheckinDone]           = useState(false);
+  const [cloudTab, setCloudTab]                 = useState(0); // 0=Mood 1=Sleep 2=Work
+  const [wiseyIdx, setWiseyIdx]                 = useState(0);
 
   useEffect(() => {
     const upd = () =>
@@ -89,13 +228,42 @@ export default function MainPage() {
     return () => window.removeEventListener("resize", upd);
   }, []);
 
+  // Auto-cycle cloud tab and Wisey tip every 4 seconds
+  useEffect(() => {
+    const id = setInterval(() => {
+      setCloudTab(t => (t + 1) % 3);
+      setWiseyIdx(i => i + 1);
+    }, 4000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Show check-in popup once per day (resets at 6am); restore stats if already done
+  useEffect(() => {
+    const key = `emochi_checkin_${getCheckinDate()}`;
+    const saved = localStorage.getItem(key);
+    if (!saved) {
+      setTimeout(() => setCheckinOpen(true), 600);
+    } else {
+      try {
+        const { sleepIdx, workIdx, feelingIdxs } = JSON.parse(saved);
+        applyStats(feelingIdxs, sleepIdx, workIdx);
+      } catch { /* legacy entry without data — show popup again */ }
+    }
+  }, []);
+
   const currentChar = CHARS.find(c => c.id === avatar) ?? CHARS[4];
   const PANEL_W = 248;
 
   function openProfile() {
     setEditName(userName);
     setEditAvatar(avatar);
+    setConfirmDelete(false);
     setProfile(true);
+  }
+
+  async function deleteAccount() {
+    await fetch("/api/user", { method: "DELETE" });
+    signOut({ callbackUrl: "/" });
   }
 
   function saveProfile() {
@@ -103,6 +271,46 @@ export default function MainPage() {
     setAvatar(editAvatar);
     setProfile(false);
   }
+
+  function toggleFeeling(idx) {
+    setSelectedFeelings(prev =>
+      prev.includes(idx)
+        ? prev.filter(i => i !== idx)
+        : prev.length < 2 ? [...prev, idx] : prev
+    );
+  }
+
+  function applyStats(feelingIdxs, sleepIdx, workIdx) {
+    const mood  = getMoodStat(feelingIdxs);
+    const sleep = SLEEP_OPTIONS[sleepIdx] ?? { short: "—", pct: 0 };
+    const work  = WORK_OPTIONS[workIdx]   ?? { short: "—", pct: 0 };
+    setStats([
+      { icon: "🌙", label: "Sleep", short: sleep.short, pct: sleep.pct, color: "#8b5cf6" },
+      { icon: "💼", label: "Work",  short: work.short,  pct: work.pct,  color: "#f59e0b" },
+      { icon: "😊", label: "Mood",  short: mood.emoji,  pct: mood.pct,  color: "#22c55e" },
+    ]);
+  }
+
+  function submitCheckin() {
+    const key = `emochi_checkin_${getCheckinDate()}`;
+    localStorage.setItem(key, JSON.stringify({
+      feelingIdxs: selectedFeelings,
+      sleepIdx: selectedSleep,
+      workIdx: selectedWork,
+    }));
+    applyStats(selectedFeelings, selectedSleep, selectedWork);
+    setCheckinDone(true);
+    setTimeout(() => {
+      setCheckinOpen(false);
+      setCheckinDone(false);
+      setCheckinStep(1);
+      setSelectedFeelings([]);
+      setSelectedSleep(null);
+      setSelectedWork(null);
+    }, 2200);
+  }
+
+  const deltas = checkinDone ? calcDeltas(selectedFeelings, selectedSleep, selectedWork) : {};
 
   return (
     <>
@@ -120,9 +328,20 @@ export default function MainPage() {
         .picker-char:hover > div { outline: 2px solid #ccc; }
         .modal-overlay { animation: fadeIn .16s ease; }
         .modal-card   { animation: slideUp .2s cubic-bezier(.34,1.56,.64,1); }
-        @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
-        @keyframes slideUp { from{transform:translateY(24px) scale(.97);opacity:0} to{transform:none;opacity:1} }
+        @keyframes fadeIn     { from{opacity:0} to{opacity:1} }
+        @keyframes slideUp    { from{transform:translateY(24px) scale(.97);opacity:0} to{transform:none;opacity:1} }
+        @keyframes cloudFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+        @keyframes cloudPop   { 0%{transform:scale(.9);opacity:0} 100%{transform:scale(1);opacity:1} }
         .friends-panel { transition: transform .28s cubic-bezier(.4,0,.2,1), opacity .28s; }
+        .btn-logout { transition: transform .2s, box-shadow .2s; }
+        .btn-logout:hover { transform: translateY(-6px); box-shadow: 0 16px 32px rgba(240,90,58,.45) !important; }
+        .feeling-chip:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,.1) !important; }
+        .feeling-chip { transition: transform .15s, box-shadow .15s, background .15s, border-color .15s; }
+        .option-btn:hover { border-color: #C9A857 !important; }
+        .option-btn { transition: border-color .15s, background .15s; }
+        @keyframes pop { 0%{transform:scale(.95);opacity:0} 100%{transform:scale(1);opacity:1} }
+        .checkin-done { animation: pop .3s cubic-bezier(.34,1.56,.64,1); }
+        @keyframes wiseyFade { 0%{opacity:0;transform:translateY(6px)} 100%{opacity:1;transform:none} }
       `}</style>
 
       <div style={{
@@ -140,34 +359,22 @@ export default function MainPage() {
 
           {/* ══ TOP NAV BAR ══ */}
           <div style={{
-            position: "absolute", top: 0, left: 0, right: 0, height: 80,
+            position: "absolute", top: 0, left: 0, right: 0, height: 72,
             display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "0 36px", borderBottom: "1px solid #f0f0f0", zIndex: 30,
-            background: "rgba(255,253,240,.92)", backdropFilter: "blur(8px)",
+            padding: "0 36px", zIndex: 30,
           }}>
-            {/* Left: daily donut stats */}
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              {STATS.map(s => <DonutStat key={s.label} stat={s} />)}
-            </div>
-
-            {/* Center: Logo */}
-            <div style={{
-              fontSize: 30, fontWeight: 800, letterSpacing: .5, color: INK,
-              position: "absolute", left: "50%", transform: "translateX(-50%)",
-            }}>
+            <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: .5, color: INK }}>
               <span style={{ color: "#ffb703" }}>Emo</span>chi
             </div>
-
-            {/* Right: avatar pill + settings + friends toggle */}
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <button className="avatar-pill" onClick={openProfile} style={{
-                display: "flex", alignItems: "center", gap: 10,
-                padding: "6px 14px 6px 6px", borderRadius: 40,
-                background: "#f8f8f8", border: "1.5px solid #ececec",
-                cursor: "pointer", transition: "filter .15s",
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "5px 14px 5px 5px", borderRadius: 40,
+                background: "rgba(255,255,255,.7)", border: "1.5px solid #ececec",
+                cursor: "pointer", transition: "filter .15s", backdropFilter: "blur(8px)",
               }}>
                 <div style={{
-                  width: 44, height: 44, borderRadius: "50%",
+                  width: 38, height: 38, borderRadius: "50%",
                   background: currentChar.color + "22",
                   border: `2px solid ${currentChar.color}`,
                   position: "relative", overflow: "hidden", flexShrink: 0,
@@ -175,24 +382,23 @@ export default function MainPage() {
                 }}>
                   <Image src={`/idle/${currentChar.file.toLowerCase()}`} alt={currentChar.name} fill style={{ objectFit: "cover" }} />
                 </div>
-                <div style={{ textAlign: "left" }}>
-                  <div style={{ color: INK, fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>{userName}</div>
-                  <div style={{ color: "#bbb", fontSize: 11 }}>Lv. 1  ·  edit profile</div>
-                </div>
+                <span style={{ color: INK, fontWeight: 700, fontSize: 13 }}>{userName}</span>
               </button>
-
-              <div style={{
-                width: 40, height: 40, borderRadius: "50%",
-                background: "#f5f5f5", border: "1px solid #e8e8e8",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 16, cursor: "pointer",
-              }}>⚙️</div>
-
+              <button onClick={() => setHistory(o => !o)} style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "8px 14px", borderRadius: 30,
+                background: historyOpen ? "#6366f1" : "rgba(255,255,255,.7)",
+                border: "1px solid #e8e8e8", backdropFilter: "blur(8px)",
+                cursor: "pointer", transition: "background .2s",
+              }}>
+                <span style={{ fontSize: 15 }}>📊</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: historyOpen ? "#fff" : "#555" }}>History</span>
+              </button>
               <button onClick={() => setFriends(o => !o)} style={{
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "8px 14px", borderRadius: 30,
-                background: friendsOpen ? INK : "#f5f5f5",
-                border: "1px solid #e8e8e8",
+                background: friendsOpen ? INK : "rgba(255,255,255,.7)",
+                border: "1px solid #e8e8e8", backdropFilter: "blur(8px)",
                 cursor: "pointer", transition: "background .2s",
               }}>
                 <span style={{ fontSize: 15 }}>👥</span>
@@ -249,6 +455,64 @@ export default function MainPage() {
             </div>
           </div>
 
+          {/* ══ CLOUD STAT WIDGET ══ */}
+          <div style={{ position: "absolute", top: 90, left: 60, zIndex: 25 }}>
+            <CloudWidget
+              stats={stats}
+              cloudTab={cloudTab}
+              onCycle={() => setCloudTab(t => (t + 1) % 3)}
+            />
+          </div>
+
+          {/* ══ WISEY DAILY SUGGESTION ══ */}
+          {(() => {
+            const wiseyChar = CHARS.find(c => c.id === "wisey");
+            const tips = getWiseySuggestions(stats);
+            const tip  = tips[wiseyIdx % tips.length];
+            return (
+              <div style={{
+                position: "absolute", top: 100, left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 25, display: "flex", alignItems: "flex-start", gap: 10,
+                maxWidth: 460, width: "max-content",
+              }}>
+                {/* Wisey avatar bubble */}
+                <div style={{
+                  width: 58, height: 58, borderRadius: "50%",
+                  background: wiseyChar.color + "22",
+                  border: `2.5px solid ${wiseyChar.color}`,
+                  position: "relative", overflow: "hidden", flexShrink: 0,
+                  boxShadow: `0 4px 16px ${wiseyChar.color}55`,
+                }}>
+                  <Image src={`/agents/${wiseyChar.file}`} alt="Wisey" fill style={{ objectFit: "cover" }} />
+                </div>
+                {/* Message bubble */}
+                <div style={{
+                  background: "rgba(255,255,255,.92)",
+                  backdropFilter: "blur(14px)",
+                  borderRadius: "4px 20px 20px 20px",
+                  padding: "14px 22px 16px",
+                  boxShadow: "0 6px 28px rgba(0,0,0,.12)",
+                  border: `1px solid ${wiseyChar.color}30`,
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: wiseyChar.color, letterSpacing: .3, marginBottom: 6 }}>
+                    Wisey
+                  </div>
+                  <div
+                    key={wiseyIdx}
+                    style={{
+                      fontSize: 16, fontWeight: 600, color: "#29293a",
+                      lineHeight: 1.6, maxWidth: 420,
+                      animation: "wiseyFade .4s ease",
+                    }}
+                  >
+                    {tip}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* ══ CHARACTERS GROUP ══ */}
           <div style={{
             position: "absolute", left: 0, right: friendsOpen ? PANEL_W : 0, bottom: 160,
@@ -261,7 +525,7 @@ export default function MainPage() {
                 hovered={hovChar === c.id}
                 onEnter={() => setHovChar(c.id)}
                 onLeave={() => setHovChar(null)}
-                onClick={() => setCharPopup(c)}
+                onClick={rect => setCharPopup({ char: c, rect })}
               />
             ))}
           </div>
@@ -287,81 +551,151 @@ export default function MainPage() {
             </button>
           </div>
 
-          {/* ══ CHARACTER POPUP ══ */}
-          {charPopup && (
-            <div className="modal-overlay" onClick={() => setCharPopup(null)} style={{
-              position: "absolute", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 50,
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <div className="modal-card" onClick={e => e.stopPropagation()} style={{
-                width: 620, background: "#fff", borderRadius: 28,
-                boxShadow: "0 24px 60px rgba(0,0,0,.18)", overflow: "hidden", display: "flex",
+          {/* ══ CHARACTER SPEECH CLOUD ══ */}
+          {charPopup && createPortal(
+            <div
+              onClick={() => setCharPopup(null)}
+              style={{
+                position: "fixed", inset: 0, zIndex: 9997,
+                background: "rgba(10,8,28,.65)",
+                backdropFilter: "blur(10px)",
+              }}
+            >
+              {/* Agent — exact original screen position */}
+              <div style={{
+                position: "absolute",
+                left: charPopup.rect.left,
+                top: charPopup.rect.top,
+                width: charPopup.rect.width,
+                height: charPopup.rect.height,
+                pointerEvents: "none",
+                filter: `drop-shadow(0 16px 40px ${charPopup.char.color}88)`,
+                animation: "cloudPop .25s ease",
               }}>
-                <div style={{
-                  width: 220, flexShrink: 0,
-                  background: `linear-gradient(160deg,${charPopup.color}22,${charPopup.color}44)`,
-                  display: "flex", alignItems: "flex-end", justifyContent: "center",
-                }}>
-                  <div style={{ position: "relative", width: 180, height: 240 }}>
-                    <Image src={`/idle/${charPopup.file.toLowerCase()}`} alt={charPopup.name} fill style={{ objectFit: "contain" }} />
-                  </div>
-                </div>
-                <div style={{ flex: 1, padding: "28px 28px 24px" }}>
-                  <button onClick={() => setCharPopup(null)} style={{
-                    float: "right", width: 30, height: 30, borderRadius: "50%",
-                    background: "#f4f4f4", border: "none", cursor: "pointer", fontSize: 13, color: "#777",
-                  }}>✕</button>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
-                    <div style={{ fontSize: 28, fontWeight: 800, color: INK }}>{charPopup.name}</div>
-                    {!charPopup.noLevel && (
+                <Image src={`/agents/${charPopup.char.file}`} alt={charPopup.char.name} fill style={{ objectFit: "contain" }} />
+              </div>
+
+              {/* CSS conversation cloud — auto-sizes to text, no PNG */}
+              {(() => {
+                const vw = typeof window !== "undefined" ? window.innerWidth : 1600;
+                const vh = typeof window !== "undefined" ? window.innerHeight : 900;
+                const CLOUD_W = Math.min(520, vw - 48);
+                const agentCenterX = charPopup.rect.left + charPopup.rect.width / 2;
+                const cloudLeft = Math.max(20, Math.min(agentCenterX - CLOUD_W / 2, vw - CLOUD_W - 20));
+                // Tail tip aligns with agent center; clamped within cloud bounds
+                const tailX = Math.max(20, Math.min(agentCenterX - cloudLeft - 14, CLOUD_W - 48));
+                // Cloud bottom edge sits 38px above agent top (gap + tail height)
+                const cloudBottom = vh - charPopup.rect.top + 38;
+
+                return (
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      position: "absolute",
+                      left: cloudLeft,
+                      bottom: cloudBottom,
+                      width: CLOUD_W,
+                      animation: "slideUp .3s cubic-bezier(.34,1.56,.64,1)",
+                      zIndex: 3,
+                    }}
+                  >
+                    {/* Cloud body — grows to fit content */}
+                    <div style={{
+                      position: "relative",
+                      background: "linear-gradient(160deg,#fff 0%,#f0f2fa 100%)",
+                      borderRadius: 22,
+                      padding: "22px 26px 20px",
+                      boxShadow: "0 8px 40px rgba(0,0,0,.18),0 2px 8px rgba(0,0,0,.06)",
+                      zIndex: 2,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                    }}>
+                      {/* Agent name */}
                       <div style={{
-                        padding: "3px 12px", borderRadius: 30,
-                        background: charPopup.color + "22", color: charPopup.color, fontSize: 12, fontWeight: 700,
-                      }}>Lv. {charPopup.level}</div>
-                    )}
-                  </div>
-                  <div style={{
-                    display: "inline-flex", alignItems: "center", gap: 6,
-                    padding: "4px 12px", borderRadius: 20,
-                    background: charPopup.color, color: "#fff", fontSize: 11, fontWeight: 700, marginBottom: 14,
-                  }}>✦ {charPopup.role}</div>
-                  <div style={{ color: "#555", fontSize: 13, lineHeight: 1.6, marginBottom: 18 }}>{charPopup.desc}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                    {charPopup.traits.map((t, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: charPopup.color, flexShrink: 0 }} />
-                        <span style={{ color: INK, fontSize: 13, fontWeight: 600 }}>{t}</span>
+                        color: charPopup.char.color,
+                        fontSize: 22,
+                        fontWeight: 900,
+                        lineHeight: 1.1,
+                      }}>
+                        {charPopup.char.name}
                       </div>
-                    ))}
-                  </div>
-                  <a href={`/chat?agent=${encodeURIComponent(charPopup.name)}`} style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                    marginTop: 20, padding: "12px 0", borderRadius: 30,
-                    background: `linear-gradient(90deg,${charPopup.color},${charPopup.color}cc)`,
-                    color: "#fff", fontWeight: 800, fontSize: 14, textDecoration: "none",
-                    boxShadow: `0 6px 18px ${charPopup.color}55`,
-                  }}>💬 Talk to {charPopup.name}</a>
-                  {!charPopup.noLevel && (
-                    <div style={{ marginTop: 22 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                        <span style={{ color: "#aaa", fontSize: 11, fontWeight: 600 }}>XP Progress</span>
-                        <span style={{ color: "#aaa", fontSize: 11, fontWeight: 600 }}>
-                          {charPopup.level * 120} / {(charPopup.level + 1) * 120}
-                        </span>
+
+                      {/* Role pill */}
+                      <div style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        padding: "5px 14px",
+                        borderRadius: 999,
+                        background: charPopup.char.color + "18",
+                        border: `1px solid ${charPopup.char.color}45`,
+                        color: charPopup.char.color,
+                        fontSize: 12,
+                        fontWeight: 800,
+                        width: "fit-content",
+                      }}>
+                        ✦ {charPopup.char.role}
                       </div>
-                      <div style={{ height: 6, borderRadius: 6, background: "#f0f0f0", overflow: "hidden" }}>
-                        <div style={{
-                          width: `${charPopup.level % 2 === 0 ? 60 : 35}%`,
-                          height: "100%", borderRadius: 6,
-                          background: `linear-gradient(90deg,${charPopup.color},${charPopup.color}99)`,
-                        }} />
-                      </div>
+
+                      {/* Intro text — unclamped, cloud expands */}
+                      <p style={{
+                        margin: 0,
+                        color: "#29293a",
+                        fontSize: 15,
+                        fontWeight: 500,
+                        lineHeight: 1.65,
+                      }}>
+                        {charPopup.char.intro}
+                      </p>
                     </div>
-                  )}
-                </div>
+
+                    {/* Triangle tail pointing down toward agent */}
+                    <div style={{
+                      position: "absolute",
+                      bottom: -18,
+                      left: tailX,
+                      width: 0,
+                      height: 0,
+                      borderLeft: "14px solid transparent",
+                      borderRight: "14px solid transparent",
+                      borderTop: "20px solid #f0f2fa",
+                      filter: "drop-shadow(0 4px 4px rgba(0,0,0,.08))",
+                      zIndex: 2,
+                    }} />
+                  </div>
+                );
+              })()}
+
+              {/* close hint */}
+              <div style={{
+                position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)",
+                color: "rgba(255,255,255,.32)", fontSize: 11, letterSpacing: 1.5, pointerEvents: "none",
+              }}>
+                CLICK ANYWHERE TO CLOSE
               </div>
             </div>
-          )}
+          , document.body)}
+
+          {/* ══ LOGOUT BUTTON ══ */}
+          <button
+            onClick={() => signOut({ callbackUrl: "/" })}
+            className="btn-logout"
+            style={{
+              position: "absolute", bottom: 28, right: 28, zIndex: 25,
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "13px 26px", borderRadius: 30,
+              background: "#f05a3a", border: "none",
+              cursor: "pointer", fontSize: 16, fontWeight: 700, color: "#fff",
+              boxShadow: "0 4px 16px rgba(240,90,58,.4)",
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            Logout
+          </button>
 
           {/* ══ PROFILE MODAL ══ */}
           {profileOpen && (
@@ -434,9 +768,434 @@ export default function MainPage() {
                     border: "none", cursor: "pointer", color: "#fff", fontWeight: 800, fontSize: 14,
                   }}>Save Changes</button>
                 </div>
+                <div style={{ marginTop: 16, borderTop: "1px solid #f5f5f5", paddingTop: 16 }}>
+                  {!confirmDelete ? (
+                    <button onClick={() => setConfirmDelete(true)} style={{
+                      width: "100%", padding: "11px 0", borderRadius: 30,
+                      background: "none", border: "1.5px solid #fca5a5",
+                      cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#ef4444",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                    }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6M14 11v6" />
+                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                      </svg>
+                      Delete Account
+                    </button>
+                  ) : (
+                    <div style={{
+                      background: "#fff5f5", border: "1.5px solid #fca5a5",
+                      borderRadius: 16, padding: "14px 16px",
+                    }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#ef4444", marginBottom: 4 }}>Are you sure?</div>
+                      <div style={{ fontSize: 12, color: "#999", marginBottom: 12 }}>This will permanently delete your account and all your data.</div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={() => setConfirmDelete(false)} style={{
+                          flex: 1, padding: "9px 0", borderRadius: 30,
+                          background: "#f5f5f5", border: "1px solid #e8e8e8",
+                          cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#777",
+                        }}>Cancel</button>
+                        <button onClick={deleteAccount} style={{
+                          flex: 1, padding: "9px 0", borderRadius: 30,
+                          background: "#ef4444", border: "none",
+                          cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#fff",
+                        }}>Yes, delete</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
+
+          {/* ══ HISTORY MODAL ══ */}
+          {historyOpen && createPortal(
+            <div className="modal-overlay" onClick={() => setHistory(false)} style={{
+              position: "fixed", inset: 0, background: "rgba(0,0,0,.5)",
+              backdropFilter: "blur(10px)", zIndex: 9998,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <div className="modal-card" onClick={e => e.stopPropagation()} style={{
+                width: "92vw", maxWidth: 1280, height: "88vh",
+                background: "#fff", borderRadius: 28, overflow: "hidden",
+                boxShadow: "0 40px 100px rgba(0,0,0,.32)",
+                display: "flex", flexDirection: "column",
+              }}>
+                {/* Header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "22px 36px 16px", flexShrink: 0 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: "#C9A857", marginBottom: 3 }}>EMOCHI HISTORY</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: INK }}>Agent Rankings</div>
+                  </div>
+                  <button onClick={() => setHistory(false)} style={{
+                    width: 36, height: 36, borderRadius: "50%", border: "1px solid #eee",
+                    background: "#f7f7f7", color: "#555", cursor: "pointer", fontSize: 18,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>✕</button>
+                </div>
+
+                {/* Date nav row */}
+                {(() => {
+                  const dates = getRecentDates();
+                  const today = dates[0].key;
+                  const yesterday = dates[1].key;
+                  const idx = Math.max(0, dates.findIndex(d => d.key === historyDate));
+                  const canOlder = idx < dates.length - 1;
+                  const canNewer = idx > 0;
+                  return (
+                    <div style={{
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                      padding: "0 36px 18px", flexShrink: 0,
+                    }}>
+                      {/* Shortcut buttons */}
+                      {[{ label: "Today", key: today }, { label: "Yesterday", key: yesterday }].map(s => (
+                        <button key={s.key} onClick={() => setHistoryDate(s.key)} style={{
+                          padding: "7px 18px", borderRadius: 20,
+                          border: historyDate === s.key ? "none" : "1.5px solid #e8e8e8",
+                          background: historyDate === s.key ? "#C9A857" : "#fff",
+                          color: historyDate === s.key ? "#fff" : "#888",
+                          fontWeight: 700, fontSize: 12, cursor: "pointer",
+                          transition: "background .15s, color .15s",
+                        }}>{s.label}</button>
+                      ))}
+
+                      {/* Divider */}
+                      <div style={{ width: 1, height: 24, background: "#e8e8e8", margin: "0 4px" }} />
+
+                      {/* Arrow navigator */}
+                      <button onClick={() => canOlder && setHistoryDate(dates[idx + 1].key)} style={{
+                        width: 34, height: 34, borderRadius: "50%", border: "1.5px solid #e8e8e8",
+                        background: canOlder ? "#fff" : "#f7f7f7", color: canOlder ? INK : "#ccc",
+                        cursor: canOlder ? "pointer" : "default", fontSize: 18,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>‹</button>
+                      <div style={{
+                        minWidth: 170, textAlign: "center", fontSize: 14, fontWeight: 800, color: INK,
+                        background: "#f7f7fc", borderRadius: 20, padding: "8px 22px", border: "1.5px solid #eee",
+                      }}>
+                        {dates[idx]?.label ?? "Today"}
+                      </div>
+                      <button onClick={() => canNewer && setHistoryDate(dates[idx - 1].key)} style={{
+                        width: 34, height: 34, borderRadius: "50%", border: "1.5px solid #e8e8e8",
+                        background: canNewer ? "#fff" : "#f7f7f7", color: canNewer ? INK : "#ccc",
+                        cursor: canNewer ? "pointer" : "default", fontSize: 18,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>›</button>
+                    </div>
+                  );
+                })()}
+
+                {/* Rankings content */}
+                {(() => {
+                  const ranked = getHistoryScores(historyDate);
+                  const RANK_COLORS = ["#C9A857", "#8b9cb8", "#c97b3a"];
+                  const MEDALS = ["🥇", "🥈", "🥉"];
+
+                  const RankCard = ({ char, rank, cardW }) => {
+                    const isFirst = rank === 1;
+                    return (
+                      <div style={{
+                        width: cardW, background: "#fff", borderRadius: 16,
+                        boxShadow: isFirst
+                          ? `0 8px 28px ${char.color}55, 0 2px 8px rgba(0,0,0,.07)`
+                          : "0 3px 12px rgba(0,0,0,.08)",
+                        border: `2px solid ${rank <= 3 ? char.color + "55" : "#e8e8e8"}`,
+                        padding: isFirst ? "12px 8px 10px" : "10px 6px 8px",
+                        display: "flex", flexDirection: "column", alignItems: "center",
+                        position: "relative", flex: "0 0 auto",
+                      }}>
+                        {/* Medal */}
+                        <div style={{
+                          position: "absolute", top: -11, left: "50%", transform: "translateX(-50%)",
+                          minWidth: 24, height: 24, borderRadius: 12, padding: "0 6px",
+                          background: rank <= 3 ? RANK_COLORS[rank - 1] : "#dedee8",
+                          color: rank <= 3 ? "#fff" : "#888",
+                          fontSize: 11, fontWeight: 900,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          boxShadow: "0 2px 6px rgba(0,0,0,.16)", border: "2px solid #fff",
+                          whiteSpace: "nowrap",
+                        }}>
+                          {rank <= 3 ? MEDALS[rank - 1] : `#${rank}`}
+                        </div>
+                        {/* Image — fills flex space */}
+                        <div style={{ position: "relative", width: "100%", flex: 1, minHeight: 0 }}>
+                          <Image src={`/agents/${char.file}`} alt={char.name} fill
+                            style={{ objectFit: "contain", filter: isFirst ? `drop-shadow(0 4px 12px ${char.color}88)` : "none" }} />
+                        </div>
+                        {/* Name */}
+                        <div style={{ fontSize: isFirst ? 13 : 11, fontWeight: 800, color: char.color, marginTop: 4, lineHeight: 1 }}>
+                          {char.name}
+                        </div>
+                        {/* Level */}
+                        <div style={{
+                          background: char.color + "15", border: `1.5px solid ${char.color}44`,
+                          borderRadius: 20, padding: "2px 10px", marginTop: 4,
+                          fontSize: isFirst ? 11 : 9, fontWeight: 800, color: char.color, lineHeight: 1.4,
+                        }}>Lv. {char.level}</div>
+                      </div>
+                    );
+                  };
+
+                  if (!ranked) return (
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f8f8fc" }}>
+                      <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: "#555" }}>No check-in for this date</div>
+                      <div style={{ fontSize: 13, marginTop: 6, color: "#aaa" }}>Complete a daily check-in to see rankings</div>
+                    </div>
+                  );
+
+                  // Row configs: [rank indices, cardW, rowFlex]
+                  const rows = [
+                    { agents: ranked.slice(1, 4), ranks: [2, 3, 4], cardW: 108, flex: "0 0 33%" },
+                    { agents: [ranked[0]],         ranks: [1],       cardW: 140, flex: "0 0 38%" },
+                    { agents: ranked.slice(4, 7),  ranks: [5, 6, 7], cardW: 96,  flex: "0 0 29%" },
+                  ];
+
+                  return (
+                    <div style={{
+                      flex: 1, minHeight: 0,
+                      background: "#f8f8fc", borderTop: "1px solid #efefef",
+                      display: "flex", flexDirection: "column",
+                      padding: "14px 36px 12px", gap: 10, overflow: "hidden",
+                    }}>
+                      {rows.map(({ agents, ranks, cardW, flex: rowFlex }, ri) => (
+                        <div key={ri} style={{
+                          flex: rowFlex, minHeight: 0,
+                          display: "flex", justifyContent: "center", alignItems: "stretch", gap: 16,
+                        }}>
+                          {agents.map((c, i) => (
+                            <RankCard key={c.id} char={c} rank={ranks[i]} cardW={cardW} />
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          , document.body)}
+
+          {/* ══ DAILY CHECK-IN POPUP ══ */}
+          {checkinOpen && createPortal(
+            <div className="modal-overlay" style={{
+              position: "fixed", inset: 0, background: "rgba(10,10,30,.55)",
+              backdropFilter: "blur(6px)", zIndex: 9999,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <div className="modal-card" style={{
+                width: 600, background: "#fff", borderRadius: 28,
+                boxShadow: "0 32px 80px rgba(0,0,0,.22)",
+                overflow: "hidden",
+              }}>
+
+                {/* Header */}
+                <div style={{
+                  background: "linear-gradient(135deg,#1a1a2e 0%,#2e1f5e 100%)",
+                  padding: "22px 28px 18px",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ color: "#C9A857", fontSize: 11, fontWeight: 700, letterSpacing: 2, marginBottom: 4 }}>
+                        DAILY CHECK-IN · STEP {checkinDone ? "✓" : checkinStep} OF 3
+                      </div>
+                      <div style={{ color: "#fff", fontSize: 20, fontWeight: 800 }}>
+                        {checkinDone ? "All done! Your crew has been updated." :
+                          checkinStep === 1 ? "How are you feeling today?" :
+                          checkinStep === 2 ? "How much did you sleep last night?" :
+                          "How many hours of work / study today?"}
+                      </div>
+                    </div>
+                    {/* no close button — check-in is mandatory */}
+                  </div>
+
+                  {/* Step dots */}
+                  {!checkinDone && (
+                    <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
+                      {[1, 2, 3].map(s => (
+                        <div key={s} style={{
+                          height: 4, borderRadius: 4, flex: 1,
+                          background: s <= checkinStep ? "#C9A857" : "rgba(255,255,255,.2)",
+                          transition: "background .3s",
+                        }} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Body */}
+                <div style={{ padding: "24px 28px 28px" }}>
+
+                  {/* ── DONE STATE ── */}
+                  {checkinDone && (
+                    <div className="checkin-done" style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 48, marginBottom: 12 }}>✨</div>
+                      <div style={{ color: "#555", fontSize: 14, marginBottom: 20 }}>
+                        Your feelings shaped your crew today.
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+                        {Object.entries(deltas).filter(([, v]) => v !== 0).map(([name, val]) => (
+                          <div key={name} style={{
+                            display: "flex", alignItems: "center", gap: 6,
+                            padding: "6px 14px", borderRadius: 30,
+                            background: CHAR_COLOR[name] + "18",
+                            border: `1.5px solid ${CHAR_COLOR[name]}44`,
+                          }}>
+                            <span style={{ color: CHAR_COLOR[name], fontWeight: 800, fontSize: 13 }}>{name}</span>
+                            <span style={{ fontWeight: 700, fontSize: 13, color: val > 0 ? "#22c55e" : "#ef4444" }}>
+                              {val > 0 ? `+${val}` : val}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── STEP 1: FEELINGS ── */}
+                  {!checkinDone && checkinStep === 1 && (
+                    <>
+                      <div style={{ color: "#aaa", fontSize: 12, marginBottom: 14 }}>
+                        Choose up to 2 feelings
+                        {selectedFeelings.length > 0 && (
+                          <span style={{ color: "#C9A857", fontWeight: 700 }}> · {selectedFeelings.length}/2 selected</span>
+                        )}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 8, marginBottom: 24 }}>
+                        {FEELINGS.map((f, i) => {
+                          const sel = selectedFeelings.includes(i);
+                          const disabled = !sel && selectedFeelings.length >= 2;
+                          return (
+                            <button
+                              key={f.name}
+                              className="feeling-chip"
+                              onClick={() => !disabled && toggleFeeling(i)}
+                              style={{
+                                padding: "12px 6px", borderRadius: 14, cursor: disabled ? "not-allowed" : "pointer",
+                                background: sel ? INK : "#fafafa",
+                                border: `1.5px solid ${sel ? INK : "#ececec"}`,
+                                display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
+                                opacity: disabled ? 0.4 : 1,
+                              }}
+                            >
+                              <span style={{ fontSize: 22 }}>{f.emoji}</span>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: sel ? "#fff" : INK }}>{f.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <button
+                          onClick={() => selectedFeelings.length > 0 && setCheckinStep(2)}
+                          style={{
+                            padding: "12px 32px", borderRadius: 30,
+                            background: selectedFeelings.length > 0
+                              ? "linear-gradient(135deg,#1a1a2e,#2e1f5e)"
+                              : "#eee",
+                            border: "none", cursor: selectedFeelings.length > 0 ? "pointer" : "not-allowed",
+                            color: selectedFeelings.length > 0 ? "#f7d774" : "#bbb",
+                            fontWeight: 800, fontSize: 14,
+                          }}
+                        >Continue →</button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ── STEP 2: SLEEP ── */}
+                  {!checkinDone && checkinStep === 2 && (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
+                        {SLEEP_OPTIONS.map((opt, i) => {
+                          const sel = selectedSleep === i;
+                          return (
+                            <button
+                              key={opt.label}
+                              className="option-btn"
+                              onClick={() => setSelectedSleep(i)}
+                              style={{
+                                padding: "16px 18px", borderRadius: 14, cursor: "pointer",
+                                background: sel ? INK : "#fafafa",
+                                border: `1.5px solid ${sel ? INK : "#ececec"}`,
+                                textAlign: "left",
+                              }}
+                            >
+                              <div style={{ fontWeight: 800, fontSize: 14, color: sel ? "#f7d774" : INK }}>{opt.label}</div>
+                              <div style={{ fontSize: 11, color: sel ? "#aaa" : "#bbb", marginTop: 2 }}>{opt.sub}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <button onClick={() => setCheckinStep(1)} style={{
+                          padding: "12px 24px", borderRadius: 30,
+                          background: "#f5f5f5", border: "1px solid #e8e8e8",
+                          cursor: "pointer", fontWeight: 700, fontSize: 14, color: "#777",
+                        }}>← Back</button>
+                        <button
+                          onClick={() => selectedSleep !== null && setCheckinStep(3)}
+                          style={{
+                            padding: "12px 32px", borderRadius: 30,
+                            background: selectedSleep !== null
+                              ? "linear-gradient(135deg,#1a1a2e,#2e1f5e)"
+                              : "#eee",
+                            border: "none", cursor: selectedSleep !== null ? "pointer" : "not-allowed",
+                            color: selectedSleep !== null ? "#f7d774" : "#bbb",
+                            fontWeight: 800, fontSize: 14,
+                          }}
+                        >Continue →</button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ── STEP 3: WORK HOURS ── */}
+                  {!checkinDone && checkinStep === 3 && (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
+                        {WORK_OPTIONS.map((opt, i) => {
+                          const sel = selectedWork === i;
+                          return (
+                            <button
+                              key={opt.label}
+                              className="option-btn"
+                              onClick={() => setSelectedWork(i)}
+                              style={{
+                                padding: "16px 18px", borderRadius: 14, cursor: "pointer",
+                                background: sel ? INK : "#fafafa",
+                                border: `1.5px solid ${sel ? INK : "#ececec"}`,
+                                textAlign: "left",
+                              }}
+                            >
+                              <div style={{ fontWeight: 800, fontSize: 14, color: sel ? "#f7d774" : INK }}>{opt.label}</div>
+                              <div style={{ fontSize: 11, color: sel ? "#aaa" : "#bbb", marginTop: 2 }}>{opt.sub}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <button onClick={() => setCheckinStep(2)} style={{
+                          padding: "12px 24px", borderRadius: 30,
+                          background: "#f5f5f5", border: "1px solid #e8e8e8",
+                          cursor: "pointer", fontWeight: 700, fontSize: 14, color: "#777",
+                        }}>← Back</button>
+                        <button
+                          onClick={() => selectedWork !== null && submitCheckin()}
+                          style={{
+                            padding: "12px 32px", borderRadius: 30,
+                            background: selectedWork !== null
+                              ? "linear-gradient(135deg,#ff8a3d,#ff5e7a)"
+                              : "#eee",
+                            border: "none", cursor: selectedWork !== null ? "pointer" : "not-allowed",
+                            color: selectedWork !== null ? "#fff" : "#bbb",
+                            fontWeight: 800, fontSize: 14,
+                          }}
+                        >Submit ✓</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          , document.body)}
 
         </div>
       </div>
@@ -446,9 +1205,11 @@ export default function MainPage() {
 
 /* ── Character node ── */
 function CharNode({ char, hovered, onEnter, onLeave, onClick }) {
+  const imgRef = useRef(null);
   const w = char.isMain ? char.imgH * 0.92 : char.imgH * 0.80;
   return (
-    <div className="char-node" onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={onClick}
+    <div className="char-node" onMouseEnter={onEnter} onMouseLeave={onLeave}
+      onClick={() => { const rect = imgRef.current?.getBoundingClientRect(); if (rect) onClick(rect); }}
       style={{
         display: "flex", flexDirection: "column", alignItems: "center",
         marginLeft: char.isMain ? -110 : -88,
@@ -473,8 +1234,8 @@ function CharNode({ char, hovered, onEnter, onLeave, onClick }) {
           borderTop: `5px solid ${INK}`,
         }} />
       </div>
-      <div style={{ position: "relative", width: w, height: char.imgH }}>
-        <Image src={`/idle/${char.file.toLowerCase()}`} alt={char.name} fill
+      <div ref={imgRef} style={{ position: "relative", width: w, height: char.imgH }}>
+        <Image src={`/agents/${char.file}`} alt={char.name} fill
           style={{
             objectFit: "contain",
             filter: `drop-shadow(0 ${char.isMain ? 18 : 10}px ${char.isMain ? 28 : 14}px rgba(0,0,0,.14))`,
@@ -508,6 +1269,90 @@ function DonutStat({ stat }) {
       <span style={{ fontSize: 9, fontWeight: 700, color: stat.color + "bb", letterSpacing: .5 }}>
         {stat.label.toUpperCase()}
       </span>
+    </div>
+  );
+}
+
+/* ── Cloud stat widget ── */
+function CloudWidget({ stats, cloudTab, onCycle }) {
+  const TABS = [
+    { icon: stats[2].short || "😐", label: "MOOD TODAY",   value: stats[2].pct ? stats[2].pct + "%" : "—", color: "#22c55e" },
+    { icon: "🌙",                   label: "SLEEP",        value: stats[0].short || "—",                   color: "#8b5cf6" },
+    { icon: "💼",                   label: "WORK HOURS",   value: stats[1].short || "—",                   color: "#f59e0b" },
+  ];
+  const cur = TABS[cloudTab];
+  return (
+    <div
+      onClick={onCycle}
+      title="Click to cycle daily stats"
+      style={{
+        position: "relative", width: 280, height: 190,
+        cursor: "pointer", userSelect: "none",
+        animation: "cloudFloat 5s ease-in-out infinite",
+      }}
+    >
+      {/* ground shadow */}
+      <div style={{
+        position: "absolute", bottom: 2, left: "50%", transform: "translateX(-50%)",
+        width: 180, height: 20, borderRadius: "50%",
+        background: "rgba(80,60,160,.18)", filter: "blur(14px)",
+      }} />
+      {/* cloud body */}
+      <div style={{
+        position: "absolute", bottom: 32, left: 10, right: 10, height: 82,
+        borderRadius: 54,
+        background: "linear-gradient(170deg,#ffffff 0%,#e8e6ff 100%)",
+        boxShadow: "0 10px 36px rgba(140,120,255,.3), inset 0 -8px 16px rgba(120,100,220,.12), inset 0 8px 16px rgba(255,255,255,.95)",
+      }} />
+      {/* left puff */}
+      <div style={{
+        position: "absolute", bottom: 80, left: 22, width: 84, height: 84,
+        borderRadius: "50%",
+        background: "linear-gradient(145deg,#ffffff 0%,#dddaff 100%)",
+        boxShadow: "0 5px 20px rgba(140,120,255,.28), inset 0 8px 16px rgba(255,255,255,.95)",
+      }} />
+      {/* center puff (tallest) */}
+      <div style={{
+        position: "absolute", bottom: 96, left: "50%", transform: "translateX(-50%)",
+        width: 108, height: 108, borderRadius: "50%",
+        background: "linear-gradient(140deg,#ffffff 0%,#dddaff 100%)",
+        boxShadow: "0 6px 28px rgba(140,120,255,.32), inset 0 10px 18px rgba(255,255,255,.95)",
+      }} />
+      {/* right puff */}
+      <div style={{
+        position: "absolute", bottom: 78, right: 24, width: 76, height: 76,
+        borderRadius: "50%",
+        background: "linear-gradient(150deg,#ffffff 0%,#dddaff 100%)",
+        boxShadow: "0 5px 18px rgba(140,120,255,.28), inset 0 8px 14px rgba(255,255,255,.95)",
+      }} />
+      {/* data overlay */}
+      <div
+        key={cloudTab}
+        style={{
+          position: "absolute", inset: 0,
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          paddingBottom: 24, zIndex: 5, pointerEvents: "none",
+          animation: "cloudPop .25s ease",
+        }}
+      >
+        <div style={{ fontSize: 34, lineHeight: 1 }}>{cur.icon}</div>
+        <div style={{ fontSize: 24, fontWeight: 900, color: cur.color, lineHeight: 1.15 }}>{cur.value}</div>
+        <div style={{ fontSize: 10, fontWeight: 800, color: "#aaa", letterSpacing: 2, marginTop: 3 }}>{cur.label}</div>
+      </div>
+      {/* tap hint dots */}
+      <div style={{
+        position: "absolute", bottom: 8, left: "50%", transform: "translateX(-50%)",
+        display: "flex", gap: 5, zIndex: 6,
+      }}>
+        {[0,1,2].map(i => (
+          <div key={i} style={{
+            width: i === cloudTab ? 14 : 6, height: 6, borderRadius: 4,
+            background: i === cloudTab ? cur.color : "#ccc",
+            transition: "all .3s",
+          }} />
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
-import HomeClient from "./HomeClient";
+"use client";
 
-export const dynamic = "force-dynamic";
+import { useState, useEffect } from "react";
+import Image from "next/image";
 
 const INK = "#1a1a2e";
 

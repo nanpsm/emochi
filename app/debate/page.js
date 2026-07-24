@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 const CHARACTERS = [
   { id: "bubble", name: "Bubble", file: "bubble.png", left: 18, top: 30, size: 220, color: "#F97316", bubble: { left: 27, top: 18 } },
@@ -14,9 +14,6 @@ const CHARACTERS = [
   { id: "dozy", name: "Dozy", file: "dozy.png", left: 67, top: 76, size: 220, color: "#6C7A96", bubble: { left: 58, top: 76 } },
 ];
 
-const SPEAKING_ORDER = ["bubble", "buzzy", "fear", "cheer", "tear", "zen", "dozy"];
-const SPEAKING_TIME = 4800;
-
 export default function DebatePage() {
   const [scale, setScale] = useState(1);
   const [topic, setTopic] = useState("");
@@ -27,7 +24,6 @@ export default function DebatePage() {
   const [debateHistory, setDebateHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const timers = useRef([]);
 
   useEffect(() => {
     const resize = () => setScale(Math.min(window.innerWidth / 1600, window.innerHeight / 900));
@@ -35,24 +31,6 @@ export default function DebatePage() {
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
   }, []);
-
-  useEffect(() => () => timers.current.forEach(clearTimeout), []);
-
-  function playDebate(nextResponses) {
-    timers.current.forEach(clearTimeout);
-    timers.current = [];
-    setResponses(nextResponses);
-    setActiveSpeaker(SPEAKING_ORDER[0]);
-
-    SPEAKING_ORDER.forEach((id, index) => {
-      if (index > 0) {
-        timers.current.push(setTimeout(() => setActiveSpeaker(id), index * SPEAKING_TIME));
-      }
-    });
-    timers.current.push(
-      setTimeout(() => setActiveSpeaker(null), SPEAKING_ORDER.length * SPEAKING_TIME),
-    );
-  }
 
   async function startDebate(event) {
     event.preventDefault();
@@ -62,33 +40,87 @@ export default function DebatePage() {
     setLoading(true);
     setError("");
     setActiveSpeaker(null);
-    timers.current.forEach(clearTimeout);
+    setResponses({});
 
     try {
+      const history = debateHistory.flatMap((entry) => [
+        { speaker: "User", text: entry.prompt },
+        ...entry.messages.map((item) => ({ speaker: item.agent, text: item.text })),
+      ]);
       const response = await fetch("/api/debate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: nextTopic }),
+        body: JSON.stringify({ message: nextTopic, history }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "The debate could not begin.");
+      if (!response.ok || !response.body) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "The debate could not begin.");
+      }
 
-      setTopicSummary(data.summary || nextTopic);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const messages = [];
+      let buffer = "";
+      let summary = nextTopic;
+      let streamError = "";
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let newline;
+        while ((newline = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, newline).trim();
+          buffer = buffer.slice(newline + 1);
+          if (!line) continue;
+
+          let streamEvent;
+          try {
+            streamEvent = JSON.parse(line);
+          } catch {
+            continue;
+          }
+
+          if (streamEvent.type === "cast") {
+            summary = streamEvent.summary || nextTopic;
+            setTopicSummary(summary);
+          } else if (streamEvent.type === "turn_start") {
+            const id = streamEvent.agent?.toLowerCase();
+            if (id && id !== "wisey") {
+              setResponses((current) => ({ ...current, [id]: "" }));
+            }
+            setActiveSpeaker(id === "wisey" ? null : id);
+          } else if (streamEvent.type === "turn") {
+            const id = streamEvent.agent?.toLowerCase();
+            messages.push({ agent: streamEvent.agent, text: streamEvent.text });
+            if (id !== "wisey") {
+              setResponses((current) => ({ ...current, [id]: streamEvent.text }));
+              setActiveSpeaker(id);
+            } else {
+              setActiveSpeaker(null);
+            }
+          } else if (streamEvent.type === "error") {
+            streamError = streamEvent.message || "The debate failed.";
+          }
+        }
+      }
+
+      if (streamError) throw new Error(streamError);
       setDebateHistory((currentHistory) => [
         ...currentHistory,
         {
           id: `${Date.now()}-${currentHistory.length}`,
           prompt: nextTopic,
-          summary: data.summary || nextTopic,
-          responses: data.responses,
+          summary,
+          messages,
         },
       ]);
-      playDebate(data.responses);
       setTopic("");
     } catch (requestError) {
       setError(requestError.message);
     } finally {
       setLoading(false);
+      setActiveSpeaker(null);
     }
   }
 
@@ -194,13 +226,17 @@ export default function DebatePage() {
                     <p>{entry.prompt}</p>
                   </div>
                   <div className="history-summary">{entry.summary}</div>
-                  {SPEAKING_ORDER.map((id) => {
-                    const character = CHARACTERS.find((item) => item.id === id);
-                    if (!entry.responses?.[id] || !character) return null;
+                  {entry.messages.map((message, index) => {
+                    const character = CHARACTERS.find(
+                      (item) => item.id === message.agent?.toLowerCase(),
+                    );
+                    if (!message.text) return null;
                     return (
-                      <div className="history-reply" key={id}>
-                        <strong style={{ color: character.color }}>{character.name}</strong>
-                        <p>{entry.responses[id]}</p>
+                      <div className="history-reply" key={`${message.agent}-${index}`}>
+                        <strong style={{ color: character?.color || "#806b59" }}>
+                          {character?.name || message.agent}
+                        </strong>
+                        <p>{message.text}</p>
                       </div>
                     );
                   })}

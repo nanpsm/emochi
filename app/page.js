@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { useSession, signIn, signOut } from "next-auth/react";
 
 const MOODLINGS = [
   { key: "cheer",  color: "#FFC53D", name: "Cheer",  quote: "What could go right?",           file: "Cheer.png",  animDelay: "0s"    },
@@ -16,10 +15,10 @@ const MOODLINGS = [
 ];
 
 const NAV_ITEMS = [
-  { icon: "📋", label: "Missions",   badge: null  },
-  { icon: "🎪", label: "Events",     badge: "!"   },
-  { icon: "🏆", label: "Ranked",     badge: "!"   },
-  { icon: "🥇", label: "Tournaments",badge: "!"   },
+  { icon: "📋", label: "Missions",    badge: null },
+  { icon: "🎪", label: "Events",      badge: "!"  },
+  { icon: "🏆", label: "Ranked",      badge: "!"  },
+  { icon: "🥇", label: "Tournaments", badge: "!"  },
 ];
 
 export default function Home() {
@@ -64,10 +63,6 @@ export default function Home() {
           70%  { transform: scale(1.3); opacity: 0;   }
           100% { transform: scale(1.3); opacity: 0;   }
         }
-        @keyframes spin-slow {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
         @keyframes badge-pop {
           0%, 100% { transform: scale(1); }
           50%       { transform: scale(1.2); }
@@ -85,13 +80,12 @@ export default function Home() {
           to   { opacity: 1; transform: translateY(0); }
         }
         .char-float { animation: float 3s ease-in-out infinite; }
-        .char-float-slow { animation: floatSlow 4s ease-in-out infinite; }
         .btn-hover:hover { transform: scale(1.06) translateY(-2px); filter: brightness(1.1); }
         .btn-hover { transition: transform .15s, filter .15s; }
         .play-btn:hover { transform: scale(1.08) translateY(-3px); filter: brightness(1.15); box-shadow: 0 12px 40px rgba(255,197,61,0.7) !important; }
         .play-btn { transition: transform .18s, filter .18s, box-shadow .18s; }
-        .char-card:hover .char-name-tag { opacity: 1 !important; transform: translateY(0) !important; }
-        .char-card:hover { filter: brightness(1.08) drop-shadow(0 0 16px currentColor); }
+        .char-card:hover .char-name-tag { opacity: 1 !important; transform: translateX(-50%) translateY(0) !important; }
+        .char-card:hover { filter: brightness(1.08) drop-shadow(0 0 16px rgba(255,255,255,0.4)); }
         .char-card { transition: filter .2s; cursor: pointer; }
       `}</style>
 
@@ -103,7 +97,7 @@ export default function Home() {
         display: "flex", flexDirection: "column",
       }}>
 
-        {/* ── Starfield ── */}
+        {/* Starfield */}
         {stars.map(s => (
           <div key={s.id} style={{
             position: "absolute", left: `${s.x}%`, top: `${s.y}%`,
@@ -114,7 +108,7 @@ export default function Home() {
           }} />
         ))}
 
-        {/* ── Moon ── */}
+        {/* Moon */}
         <div style={{
           position: "absolute", top: "4%", left: "50%", transform: "translateX(-50%)",
           width: 160, height: 160, borderRadius: "50%",
@@ -123,28 +117,25 @@ export default function Home() {
           animation: "floatSlow 8s ease-in-out infinite",
         }} />
 
-        {/* ── Clouds ── */}
-        {[{ l: "5%", t: "22%", op: 0.25, s: 1 }, { l: "75%", t: "18%", op: 0.2, s: 0.8 }].map((c, i) => (
+        {/* Clouds */}
+        {[{ l: "5%", t: "22%" }, { l: "75%", t: "18%" }].map((c, i) => (
           <div key={i} style={{
             position: "absolute", left: c.l, top: c.t,
             width: 120, height: 50, borderRadius: 50,
-            background: "rgba(255,255,255,0.18)",
-            opacity: c.op, transform: `scale(${c.s})`,
+            background: "rgba(255,255,255,0.18)", opacity: 0.25,
             animation: `cloud-drift ${12 + i * 4}s ease-in-out infinite alternate`,
           }} />
         ))}
 
-        {/* ── Ground platform ── */}
+        {/* Ground glow */}
         <div style={{
-          position: "absolute", bottom: "12%", left: "50%",
-          transform: "translateX(-50%)",
+          position: "absolute", bottom: "12%", left: "50%", transform: "translateX(-50%)",
           width: "85%", height: 60, borderRadius: "50%",
-          background: "rgba(255,180,80,0.18)",
-          filter: "blur(18px)",
+          background: "rgba(255,180,80,0.18)", filter: "blur(18px)",
           animation: "ground-glow 4s ease-in-out infinite",
         }} />
 
-        {/* ══════════════════════ TOP BAR ══════════════════════ */}
+        {/* ── TOP BAR ── */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "14px 20px 0", flexShrink: 0, position: "relative", zIndex: 10,
@@ -182,20 +173,19 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Center: logo */}
+          {/* Logo */}
           <div style={{
             position: "absolute", left: "50%", transform: "translateX(-50%)",
-            fontWeight: 900, fontSize: "1.8rem", letterSpacing: "-0.5px",
-            textShadow: "0 3px 12px rgba(0,0,0,0.5)",
-            color: "#fff",
+            fontWeight: 900, fontSize: "1.8rem",
+            textShadow: "0 3px 12px rgba(0,0,0,0.5)", color: "#fff",
           }}>
             <span style={{ color: "#ffc53d" }}>Emo</span>chi
           </div>
 
-          {/* Right: currency */}
+          {/* Currency */}
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <CurrencyChip icon="🪙" value={coins} color="#ffc53d" />
-            <CurrencyChip icon="💎" value={gems} color="#5FD4C4" />
+            <CurrencyChip icon="💎" value={gems}  color="#5FD4C4" />
             <button style={{
               width: 38, height: 38, borderRadius: "50%",
               background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.25)",
@@ -204,16 +194,16 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ══════════════════════ SIDE LEFT ══════════════════════ */}
+        {/* ── SIDE LEFT ── */}
         <div style={{
           position: "absolute", left: 16, top: "50%", transform: "translateY(-55%)",
           display: "flex", flexDirection: "column", gap: 14, zIndex: 10,
         }}>
           <SideBtn icon="🎁" label="Free Prizes" color="#ffc53d" />
-          <SideBtn icon="🎨" label="Customize"  color="#A78BFA" />
+          <SideBtn icon="🎨" label="Customize"   color="#A78BFA" />
         </div>
 
-        {/* ══════════════════════ SIDE RIGHT ══════════════════════ */}
+        {/* ── SIDE RIGHT ── */}
         <div style={{
           position: "absolute", right: 16, top: "50%", transform: "translateY(-55%)",
           display: "flex", flexDirection: "column", gap: 14, zIndex: 10,
@@ -222,10 +212,10 @@ export default function Home() {
           <SideBtn icon="🎉" label="Party"   color="#F97316" badge />
         </div>
 
-        {/* ══════════════════════ CHARACTERS STAGE ══════════════════════ */}
+        {/* ── CHARACTERS STAGE ── */}
         <div style={{
           flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center",
-          padding: "0 100px", gap: 0, position: "relative", zIndex: 5,
+          padding: "0 100px", position: "relative", zIndex: 5,
           paddingBottom: "calc(12% + 60px)",
         }}>
           {MOODLINGS.map((m, i) => (
@@ -240,7 +230,7 @@ export default function Home() {
           ))}
         </div>
 
-        {/* ── Tooltip for selected character ── */}
+        {/* Tooltip */}
         {active && (
           <div style={{
             position: "absolute", left: "50%", top: "58%",
@@ -257,12 +247,11 @@ export default function Home() {
           </div>
         )}
 
-        {/* ══════════════════════ BOTTOM BAR ══════════════════════ */}
+        {/* ── BOTTOM BAR ── */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "center",
           gap: 10, padding: "10px 20px 16px",
-          position: "relative", zIndex: 10, flexShrink: 0,
-          flexWrap: "wrap",
+          position: "relative", zIndex: 10, flexShrink: 0, flexWrap: "wrap",
         }}>
           {/* Pass card */}
           <div style={{
@@ -281,12 +270,10 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Nav buttons */}
           {NAV_ITEMS.map(n => (
             <NavBtn key={n.label} icon={n.icon} label={n.label} badge={n.badge} />
           ))}
 
-          {/* PLAY */}
           <button className="play-btn" style={{
             background: "linear-gradient(135deg,#ffc53d,#f97316)",
             border: "3px solid rgba(255,255,255,0.4)",
@@ -304,11 +291,9 @@ export default function Home() {
   );
 }
 
-/* ── Sub-components ── */
-
 function CharacterFigure({ moodling, index, total, isSelected, onClick }) {
-  const centerOffset = (index - (total - 1) / 2);
-  const zIndex       = total - Math.abs(index - (total - 1) / 2);
+  const centerOffset = index - (total - 1) / 2;
+  const zIndex       = total - Math.abs(centerOffset);
   const scale        = 1 - Math.abs(centerOffset) * 0.04;
   const yShift       = Math.abs(centerOffset) * 6;
 
@@ -323,22 +308,16 @@ function CharacterFigure({ moodling, index, total, isSelected, onClick }) {
         marginLeft: index === 0 ? 0 : -14,
       }}
     >
-      {/* Pulse ring on selection */}
       {isSelected && (
         <div style={{
-          position: "absolute", bottom: 24, left: "50%",
-          transform: "translateX(-50%)",
+          position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)",
           width: 80, height: 80, borderRadius: "50%",
           border: `3px solid ${moodling.color}`,
           animation: "pulse-ring 1.2s ease-out infinite",
         }} />
       )}
 
-      {/* Character image */}
-      <div
-        className="char-float"
-        style={{ animationDelay: moodling.animDelay, position: "relative" }}
-      >
+      <div className="char-float" style={{ animationDelay: moodling.animDelay }}>
         <Image
           src={`/agents/${moodling.file}`}
           alt={moodling.name}
@@ -355,19 +334,18 @@ function CharacterFigure({ moodling, index, total, isSelected, onClick }) {
         />
       </div>
 
-      {/* Shadow ellipse */}
+      {/* Shadow */}
       <div style={{
         width: 60, height: 12, borderRadius: "50%",
-        background: "rgba(0,0,0,0.28)", filter: "blur(4px)",
-        marginTop: -6,
+        background: "rgba(0,0,0,0.28)", filter: "blur(4px)", marginTop: -6,
       }} />
 
-      {/* Name tag — revealed on hover via CSS */}
+      {/* Name tag */}
       <div className="char-name-tag" style={{
         position: "absolute", bottom: -28, left: "50%",
         transform: "translateX(-50%) translateY(6px)",
-        background: moodling.color,
-        color: "#1a1a1a", fontWeight: 800, fontSize: "0.72rem",
+        background: moodling.color, color: "#1a1a1a",
+        fontWeight: 800, fontSize: "0.72rem",
         borderRadius: 20, padding: "3px 10px",
         whiteSpace: "nowrap",
         opacity: isSelected ? 1 : 0,
@@ -422,10 +400,10 @@ function SideBtn({ icon, label, color, badge }) {
           }}>!</div>
         )}
       </div>
-      <span style={{ color: "#fff", fontSize: "0.65rem", fontWeight: 700,
-        textShadow: "0 1px 4px rgba(0,0,0,0.6)", textTransform: "uppercase" }}>
-        {label}
-      </span>
+      <span style={{
+        color: "#fff", fontSize: "0.65rem", fontWeight: 700,
+        textShadow: "0 1px 4px rgba(0,0,0,0.6)", textTransform: "uppercase",
+      }}>{label}</span>
     </div>
   );
 }
@@ -456,10 +434,10 @@ function NavBtn({ icon, label, badge }) {
           }}>!</div>
         )}
       </div>
-      <span style={{ color: "#fff", fontSize: "0.6rem", fontWeight: 700,
-        textShadow: "0 1px 4px rgba(0,0,0,0.6)", textTransform: "uppercase" }}>
-        {label}
-      </span>
+      <span style={{
+        color: "#fff", fontSize: "0.6rem", fontWeight: 700,
+        textShadow: "0 1px 4px rgba(0,0,0,0.6)", textTransform: "uppercase",
+      }}>{label}</span>
     </div>
   );
 }

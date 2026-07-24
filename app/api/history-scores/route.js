@@ -30,11 +30,5 @@ export async function GET(req) {
       ORDER BY latest.score DESC
     `);
 
-  // DB uses role keys; map to display names used by CHARS in the frontend
-  const DB_TO_DISPLAY = { stress: "Buzzy", calm: "Zen", social: "Bubble", rest: "Dozy" };
-  const mapped = result.recordset.map(row => ({
-    ...row,
-    emochi_name: DB_TO_DISPLAY[row.emochi_name.toLowerCase()] ?? row.emochi_name,
-  }));
-  return NextResponse.json(mapped);
+  return NextResponse.json(result.recordset);
 }

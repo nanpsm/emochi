@@ -118,6 +118,7 @@ export async function POST(req) {
 
       try {
         // ── 1. Director picks who's in the room and who opens ──
+        // (or flags the message as not actually debate-worthy — see below)
         let participants = emotions;
         let current = emotions[0];
         let summary = message;
@@ -130,12 +131,39 @@ export async function POST(req) {
               `Available characters and their emotions: ${emotions.join(", ")} ` +
               `(Cheer=joy/optimism, Fear=caution, Buzzy=urgency/stress, Tear=sadness/empathy, ` +
               `Zen=calm, Bubble=social connection, Dozy=rest/recovery).\n` +
-              `Pick the 3-5 characters whose perspectives are MOST relevant to the user's message, ` +
-              `favoring characters likely to DISAGREE with each other, and choose who speaks first.\n` +
-              `Also summarize the user's current topic neutrally in no more than 12 words.\n` +
+              `First check: is the user's latest message actually something to debate — a real ` +
+              `question, situation, or topic with room for different emotional takes? If it is ` +
+              `instead just a greeting, introduction, their name, or other small talk with nothing ` +
+              `to debate, respond with ONLY this JSON: {"direct": true, "summary": "..."} ` +
+              `(summary: neutral, no more than 12 words).\n` +
+              `Otherwise, pick the 3-5 characters whose perspectives are MOST relevant to the user's ` +
+              `message, favoring characters likely to DISAGREE with each other, and choose who speaks ` +
+              `first. Also summarize the user's current topic neutrally in no more than 12 words.\n` +
               `Respond with ONLY this JSON, nothing else: ` +
               `{"participants": ["Name", ...], "first": "Name", "summary": "..."}`
           ).catch(() => null);
+
+          if (plan?.direct) {
+            // Not debate-worthy — Wisey answers directly, no cast, no debate.
+            summary = typeof plan.summary === "string" && plan.summary.trim() ? plan.summary.trim() : message;
+            emit({ type: "cast", participants: [], judge: judge ?? null, summary, direct: true });
+            if (judge) {
+              emit({ type: "turn_start", agent: judge });
+              const reply = await askAgent(
+                openai,
+                judge,
+                `You are ${judge}, the warm host of the Moodling council. The user just said: ` +
+                  `"${message}" — this isn't something to debate, it's a greeting, introduction, or ` +
+                  `small talk. Reply naturally and briefly (one short sentence) as yourself, relevant ` +
+                  `to what they said. Do not prefix your reply with your name.`
+              );
+              transcript.push({ speaker: judge, text: reply });
+              emit({ type: "turn", agent: judge, text: reply });
+            }
+            emit({ type: "done" });
+            return;
+          }
+
           if (Array.isArray(plan?.participants)) {
             const chosen = plan.participants.filter((n) => emotions.includes(n));
             if (chosen.length >= 2) participants = chosen;

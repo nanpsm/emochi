@@ -1,17 +1,54 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 
 const INK = "#1a1a2e";
 
+const GIFS = [
+  "dozy-yarn.gif",
+  "cheer-cheerup.gif",
+  "tear-crying.gif",
+  "fear-sad.gif",
+  "bubble-talking.gif",
+  "buzzy-busy.gif",
+];
+
+const HOLD_MS = 2600;
+const FADE_MS = 400;
+
 export default function LoginPage() {
+  const [index, setIndex] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    let hideTimer, showTimer;
+
+    function cycle() {
+      hideTimer = setTimeout(() => {
+        setVisible(false);
+        showTimer = setTimeout(() => {
+          setIndex((i) => (i + 1) % GIFS.length);
+          setVisible(true);
+          cycle();
+        }, FADE_MS);
+      }, HOLD_MS);
+    }
+
+    cycle();
+    return () => {
+      clearTimeout(hideTimer);
+      clearTimeout(showTimer);
+    };
+  }, []);
+
   return (
     <>
       <style>{`
         .login-ms-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0,0,0,.12); }
         .login-ms-btn { transition: transform .18s, box-shadow .18s; }
         @media (min-width: 1024px) {
-          .login-gif-panel { display: block !important; }
+          .login-gif-panel { display: flex !important; }
         }
       `}</style>
 
@@ -19,25 +56,29 @@ export default function LoginPage() {
         minHeight: "100vh",
         position: "relative",
         display: "flex", alignItems: "center", justifyContent: "center",
+        gap: 64,
         background: "#e9e9ec",
         fontFamily: "var(--font-nunito),'Nunito',sans-serif",
         color: INK,
-        padding: 24,
+        padding: "24px 10vw",
         overflow: "hidden",
       }}>
-        {/* Gif sitting directly on the background */}
+        {/* Gif sitting directly on the background, cycling one at a time */}
         <div className="login-gif-panel" style={{
-          position: "absolute",
-          left: "12%", top: "50%", transform: "translateY(-50%)",
-          width: "38vw", maxWidth: 460,
+          flex: "0 0 auto",
+          width: "30vw", maxWidth: 340, aspectRatio: "1 / 1",
           display: "none",
+          alignItems: "center", justifyContent: "center",
         }}>
           <img
-            src="/gif/dozy-yarn.gif"
+            src={`/gif/${GIFS[index]}`}
             alt=""
             style={{
-              width: "100%", height: "auto",
-              display: "block",
+              maxWidth: "100%", maxHeight: "100%",
+              width: "auto", height: "auto",
+              objectFit: "contain",
+              opacity: visible ? 1 : 0,
+              transition: `opacity ${FADE_MS}ms ease`,
               filter: "drop-shadow(0 20px 30px rgba(26,26,46,.16))",
             }}
           />
@@ -45,36 +86,24 @@ export default function LoginPage() {
 
         {/* White surface: login card only */}
         <div style={{
-          position: "relative",
+          flex: "0 0 auto",
           width: "100%", maxWidth: 420,
           background: "#fff",
           borderRadius: 32,
           boxShadow: "0 24px 60px rgba(26,26,46,.14)",
           padding: "56px",
           display: "flex", flexDirection: "column",
-          alignItems: "flex-start",
-          gap: 8,
+          alignItems: "center", textAlign: "center",
+          gap: 24,
         }}>
-          <div style={{
-            fontFamily: "var(--font-baloo),'Baloo 2',sans-serif",
-            fontSize: 24, fontWeight: 800, letterSpacing: .3, marginBottom: 24,
-          }}>
-            <span style={{ color: "#ffb703" }}>Emo</span>chi
-          </div>
-
           <h1 style={{
             fontFamily: "var(--font-baloo),'Baloo 2',sans-serif",
-            fontSize: "clamp(24px,3vw,32px)", fontWeight: 800,
-            margin: "0 0 8px", lineHeight: 1.2,
+            fontSize: "clamp(16px,2.2vw,22px)", fontWeight: 800,
+            margin: 0, lineHeight: 1.3,
+            whiteSpace: "nowrap",
           }}>
-            Welcome back
+            Your <span style={{ color: "#ffb703" }}>Emochi</span> are waiting!
           </h1>
-          <p style={{
-            fontSize: 15, color: "#777", fontWeight: 600,
-            margin: "0 0 32px", lineHeight: 1.6, maxWidth: 360,
-          }}>
-            Sign in to continue your journey with your Moodlings.
-          </p>
 
           <button
             onClick={() => signIn("microsoft-entra-id")}
@@ -92,13 +121,6 @@ export default function LoginPage() {
             <MicrosoftLogo />
             Sign in with Microsoft
           </button>
-
-          <p style={{
-            fontSize: 12.5, color: "#aaa", fontWeight: 600,
-            marginTop: 28, lineHeight: 1.6, maxWidth: 340,
-          }}>
-            By continuing, you agree to Emochi&apos;s Terms of Service and Privacy Policy.
-          </p>
         </div>
       </div>
     </>

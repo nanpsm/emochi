@@ -224,6 +224,7 @@ export default function MainPage() {
   const [editName, setEditName]     = useState("You");
   const [editAvatar, setEditAvatar] = useState("wisey");
   const [savingProfile, setSavingProfile] = useState(false);
+  const [editingName, setEditingName] = useState(false);
   const [emochiScores, setEmochiScores] = useState({});
 
   // Friends feature state
@@ -436,6 +437,7 @@ export default function MainPage() {
     setEditName(userName);
     setEditAvatar(avatar);
     setConfirmDelete(false);
+    setEditingName(false);
     setProfile(true);
   }
 
@@ -1174,12 +1176,13 @@ export default function MainPage() {
                 boxShadow: "0 24px 60px rgba(0,0,0,.18)", padding: "28px 28px 24px",
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: INK }}>Edit Profile</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: INK }}>Profile</div>
                   <button onClick={() => setProfile(false)} style={{
                     width: 30, height: 30, borderRadius: "50%",
                     background: "#f4f4f4", border: "none", cursor: "pointer", fontSize: 13, color: "#777",
                   }}>✕</button>
                 </div>
+                {/* Avatar + name */}
                 <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 22 }}>
                   <div style={{
                     width: 80, height: 80, borderRadius: "50%",
@@ -1192,20 +1195,31 @@ export default function MainPage() {
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>DISPLAY NAME</div>
-                    <input
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
-                      maxLength={24}
-                      style={{
-                        width: "100%", padding: "10px 14px", borderRadius: 12,
+                    {editingName ? (
+                      <input
+                        autoFocus
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        maxLength={24}
+                        style={{
+                          width: "100%", padding: "10px 14px", borderRadius: 12,
+                          border: "1.5px solid #f97316", fontSize: 15, fontWeight: 700,
+                          color: INK, outline: "none", fontFamily: "inherit", background: "#fff",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        padding: "10px 14px", borderRadius: 12,
                         border: "1.5px solid #e8e8e8", fontSize: 15, fontWeight: 700,
-                        color: INK, outline: "none", fontFamily: "inherit", background: "#fafafa",
-                      }}
-                    />
+                        color: INK, background: "#fafafa",
+                      }}>{editName}</div>
+                    )}
                   </div>
                 </div>
+                {/* Avatar picker — only active in edit mode */}
                 <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 10 }}>CHOOSE AVATAR</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 22 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 22, opacity: editingName ? 1 : 0.4, pointerEvents: editingName ? "auto" : "none" }}>
                   {enrichedChars.map(c => (
                     <div key={c.id} className="picker-char" onClick={() => setEditAvatar(c.id)}
                       style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer" }}>
@@ -1222,18 +1236,40 @@ export default function MainPage() {
                     </div>
                   ))}
                 </div>
+                {/* Action buttons */}
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={() => setProfile(false)} style={{
-                    flex: 1, padding: "12px 0", borderRadius: 30,
-                    background: "#f5f5f5", border: "1px solid #e8e8e8",
-                    cursor: "pointer", fontWeight: 700, fontSize: 14, color: "#777",
-                  }}>Cancel</button>
-                  <button onClick={saveProfile} style={{
-                    flex: 2, padding: "12px 0", borderRadius: 30,
-                    background: "linear-gradient(90deg,#ff8a3d,#ff5e7a)",
-                    border: "none", cursor: savingProfile ? "not-allowed" : "pointer",
-                    color: "#fff", fontWeight: 800, fontSize: 14, opacity: savingProfile ? 0.7 : 1,
-                  }} disabled={savingProfile}>{savingProfile ? "Saving…" : "Save Changes"}</button>
+                  {editingName ? (
+                    <>
+                      <button onClick={() => { setEditName(userName); setEditAvatar(avatar); setEditingName(false); }} style={{
+                        flex: 1, padding: "12px 0", borderRadius: 30,
+                        background: "#f5f5f5", border: "1px solid #e8e8e8",
+                        cursor: "pointer", fontWeight: 700, fontSize: 14, color: "#777",
+                      }}>Cancel</button>
+                      <button onClick={async () => { await saveProfile(); setEditingName(false); }} style={{
+                        flex: 2, padding: "12px 0", borderRadius: 30,
+                        background: "linear-gradient(90deg,#ff8a3d,#ff5e7a)",
+                        border: "none", cursor: savingProfile ? "not-allowed" : "pointer",
+                        color: "#fff", fontWeight: 800, fontSize: 14, opacity: savingProfile ? 0.7 : 1,
+                      }} disabled={savingProfile}>{savingProfile ? "Saving…" : "Save Changes"}</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => setProfile(false)} style={{
+                        flex: 1, padding: "12px 0", borderRadius: 30,
+                        background: "#f5f5f5", border: "1px solid #e8e8e8",
+                        cursor: "pointer", fontWeight: 700, fontSize: 14, color: "#777",
+                      }}>Close</button>
+                      <button onClick={() => setEditingName(true)} style={{
+                        flex: 2, padding: "12px 0", borderRadius: 30,
+                        background: INK, border: "none", cursor: "pointer",
+                        color: "#fff", fontWeight: 800, fontSize: 14,
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>edit</span>
+                        Edit Profile
+                      </button>
+                    </>
+                  )}
                 </div>
                 <div style={{ marginTop: 16, borderTop: "1px solid #f5f5f5", paddingTop: 16 }}>
                   {!confirmDelete ? (

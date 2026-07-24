@@ -102,6 +102,10 @@ const WORK_OPTIONS = [
   { label: "More than 10 hrs", sub: "Overloaded", short: ">10h",  pct: 100, deltas: { Buzzy: 3, Dozy: 2, Cheer: -2 } },
 ];
 
+// Reverse-map stored decimal hours back to option indices
+const SLEEP_HOURS_LOOKUP = (h) => h == null ? null : h <= 4 ? 0 : h <= 6 ? 1 : h <= 9 ? 2 : 3;
+const WORK_HOURS_LOOKUP  = (h) => h == null ? null : h <= 3 ? 0 : h <= 7 ? 1 : h <= 10 ? 2 : 3;
+
 // mood score per feeling (for the Mood donut)
 const FEELING_MOOD = {
   Happy:   { emoji: "😊", pct: 90 },
@@ -201,6 +205,8 @@ export default function MainPage() {
   const [friendSearch, setFriendSearch] = useState("");
   const [historyOpen, setHistory]   = useState(false);
   const [historyDate, setHistoryDate] = useState(getCheckinDate);
+  const [historyScores, setHistoryScores] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [hovChar, setHovChar]       = useState(null);
   const [charPopup, setCharPopup]   = useState(null);
   const [profileOpen, setProfile]   = useState(false);
@@ -249,17 +255,60 @@ export default function MainPage() {
     return () => clearInterval(id);
   }, []);
 
+  // Fetch history scores from DB whenever the panel opens or date changes
+  useEffect(() => {
+    if (!historyOpen) return;
+    setHistoryScores(null);
+    setHistoryLoading(true);
+    fetch(`/api/history-scores?date=${historyDate}`)
+      .then(r => r.json())
+      .then(rows => {
+        if (!Array.isArray(rows) || rows.length === 0) {
+          setHistoryScores([]);
+          return;
+        }
+        // Map DB rows to CHARS shape, sorted by score desc
+        const ranked = rows
+          .map(row => {
+            const char = CHARS.find(c => c.name.toLowerCase() === row.emochi_name.toLowerCase());
+            if (!char) return null;
+            return { ...char, score: row.score, level: Math.min(10, Math.floor(row.score / 10)) };
+          })
+          .filter(Boolean)
+          .sort((a, b) => b.score - a.score);
+        setHistoryScores(ranked);
+      })
+      .catch(() => setHistoryScores([]))
+      .finally(() => setHistoryLoading(false));
+  }, [historyOpen, historyDate]);
+
   // Show check-in popup once per day (resets at 6am); restore stats if already done
   useEffect(() => {
-    const key = `emochi_checkin_${getCheckinDate()}`;
+    const date = getCheckinDate();
+    const key  = `emochi_checkin_${date}`;
     const saved = localStorage.getItem(key);
-    if (!saved) {
-      setTimeout(() => setCheckinOpen(true), 600);
-    } else {
+    if (saved) {
       try {
         const { sleepIdx, workIdx, feelingIdxs } = JSON.parse(saved);
         applyStats(feelingIdxs, sleepIdx, workIdx);
-      } catch { /* legacy entry without data — show popup again */ }
+      } catch { setTimeout(() => setCheckinOpen(true), 600); }
+    } else {
+      // Try restoring from DB (e.g. new device / cleared storage)
+      fetch(`/api/daily-checkin?date=${date}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data?.feelings != null) {
+            // feelings stored as comma-separated indices
+            const feelingIdxs = data.feelings.split(",").map(Number).filter(n => !isNaN(n));
+            const sleepIdx = SLEEP_HOURS_LOOKUP(data.sleep_hours);
+            const workIdx  = WORK_HOURS_LOOKUP(data.work_hours);
+            localStorage.setItem(key, JSON.stringify({ feelingIdxs, sleepIdx, workIdx }));
+            applyStats(feelingIdxs, sleepIdx, workIdx);
+          } else {
+            setTimeout(() => setCheckinOpen(true), 600);
+          }
+        })
+        .catch(() => setTimeout(() => setCheckinOpen(true), 600));
     }
   }, []);
 
@@ -314,13 +363,27 @@ export default function MainPage() {
   }
 
   function submitCheckin() {
-    const key = `emochi_checkin_${getCheckinDate()}`;
+    const date = getCheckinDate();
+    const key = `emochi_checkin_${date}`;
     localStorage.setItem(key, JSON.stringify({
       feelingIdxs: selectedFeelings,
       sleepIdx: selectedSleep,
       workIdx: selectedWork,
     }));
     applyStats(selectedFeelings, selectedSleep, selectedWork);
+    // Save to database (fire-and-forget)
+    const moodScore = getMoodStat(selectedFeelings).pct;
+    fetch("/api/daily-checkin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date,
+        sleepIdx: selectedSleep,
+        workIdx: selectedWork,
+        feelingIdxs: selectedFeelings,
+        moodScore,
+      }),
+    }).catch(() => {});
     setCheckinDone(true);
     setTimeout(() => {
       setCheckinOpen(false);
@@ -923,7 +986,7 @@ export default function MainPage() {
 
                 {/* Rankings content */}
                 {(() => {
-                  const ranked = getHistoryScores(historyDate);
+                  const ranked = historyScores;
                   const RANK_COLORS = ["#C9A857", "#8b9cb8", "#c97b3a"];
                   const MEDALS = ["🥇", "🥈", "🥉"];
 
@@ -972,11 +1035,16 @@ export default function MainPage() {
                     );
                   };
 
-                  if (!ranked) return (
+                  if (historyLoading || ranked === null) return (
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "#f8f8fc" }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#bbb" }}>Loading…</div>
+                    </div>
+                  );
+                  if (ranked.length === 0) return (
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f8f8fc" }}>
                       <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: "#555" }}>No check-in for this date</div>
-                      <div style={{ fontSize: 13, marginTop: 6, color: "#aaa" }}>Complete a daily check-in to see rankings</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: "#555" }}>No scores for this date</div>
+                      <div style={{ fontSize: 13, marginTop: 6, color: "#aaa" }}>Complete the personality quiz to see rankings</div>
                     </div>
                   );
 

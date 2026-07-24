@@ -6,31 +6,32 @@ const SLEEP_HOURS = [4.0, 5.5, 8.0, 10.0];
 const WORK_HOURS  = [1.5, 5.5, 9.0, 11.0];
 
 // Delta tables — must match the ones in app/home/page.js
+// Use DB role-key names: Stress=Buzzy, Calm=Zen, Social=Bubble, Rest=Dozy
 const FEELINGS = [
-  { deltas: { Cheer: 3, Tear: -3 } },           // Happy
-  { deltas: { Cheer: 3, Dozy: -2 } },           // Excited
-  { deltas: { Cheer: 3, Zen: 2, Fear: -2 } },   // Hopeful
-  { deltas: { Zen: 3, Buzzy: -3 } },             // Calm
-  { deltas: { Buzzy: 3, Zen: -3 } },             // Stressed
-  { deltas: { Fear: 3, Buzzy: 2, Zen: -2 } },   // Anxious
-  { deltas: { Fear: 3, Cheer: -2 } },            // Worried
-  { deltas: { Tear: 3, Cheer: -3 } },            // Sad
-  { deltas: { Dozy: 3, Cheer: -2 } },            // Tired
-  { deltas: { Tear: 2, Bubble: 3, Cheer: -2 } }, // Lonely
+  { deltas: { Cheer: 3, Tear: -3 } },             // Happy
+  { deltas: { Cheer: 3, Rest: -2 } },             // Excited
+  { deltas: { Cheer: 3, Calm: 2, Fear: -2 } },    // Hopeful
+  { deltas: { Calm: 3, Stress: -3 } },             // Calm
+  { deltas: { Stress: 3, Calm: -3 } },             // Stressed
+  { deltas: { Fear: 3, Stress: 2, Calm: -2 } },   // Anxious
+  { deltas: { Fear: 3, Cheer: -2 } },              // Worried
+  { deltas: { Tear: 3, Cheer: -3 } },              // Sad
+  { deltas: { Rest: 3, Cheer: -2 } },              // Tired
+  { deltas: { Tear: 2, Social: 3, Cheer: -2 } },  // Lonely
 ];
 
 const SLEEP_DELTAS = [
-  { Dozy: 3, Buzzy: 2, Zen: -2 },  // <5h
-  { Dozy: 2 },                       // 5-6h
-  { Zen: 3, Cheer: 2, Buzzy: -2 },  // 7-9h
-  { Dozy: 2 },                       // >9h
+  { Rest: 3, Stress: 2, Calm: -2 },  // <5h
+  { Rest: 2 },                         // 5-6h
+  { Calm: 3, Cheer: 2, Stress: -2 },  // 7-9h
+  { Rest: 2 },                         // >9h
 ];
 
 const WORK_DELTAS = [
-  { Dozy: 2, Buzzy: -2 },           // 0-3h
-  {},                                 // 4-7h
-  { Buzzy: 3, Zen: -2 },            // 8-10h
-  { Buzzy: 3, Dozy: 2, Cheer: -2 }, // >10h
+  { Rest: 2, Stress: -2 },            // 0-3h
+  {},                                   // 4-7h
+  { Stress: 3, Calm: -2 },            // 8-10h
+  { Stress: 3, Rest: 2, Cheer: -2 },  // >10h
 ];
 
 function calcDeltas(feelingIdxs, sleepIdx, workIdx) {

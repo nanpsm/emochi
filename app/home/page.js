@@ -155,10 +155,15 @@ function getWiseySuggestions(stats) {
   return tips;
 }
 
+function localDateStr(d) {
+  // Use local year/month/day (not UTC) so timezone offsets don't shift the date
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function getCheckinDate() {
   const now = new Date();
   if (now.getHours() < 6) now.setDate(now.getDate() - 1);
-  return now.toISOString().split("T")[0];
+  return localDateStr(now);
 }
 
 function getRecentDates() {
@@ -167,7 +172,7 @@ function getRecentDates() {
     const d = new Date();
     if (d.getHours() < 6) d.setDate(d.getDate() - 1);
     d.setDate(d.getDate() - i);
-    const key = d.toISOString().split("T")[0];
+    const key = localDateStr(d);
     const label = i === 0 ? "Today" : i === 1 ? "Yesterday"
       : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
     dates.push({ key, label });
@@ -287,22 +292,28 @@ export default function MainPage() {
     fetch(`/api/history-scores?date=${historyDate}`)
       .then(r => r.json())
       .then(rows => {
-        if (!Array.isArray(rows) || rows.length === 0) {
+        console.log("[history] date:", historyDate, "rows:", rows);
+        if (!Array.isArray(rows)) {
           setHistoryScores([]);
           return;
         }
-        // Map DB rows to CHARS shape, sorted by score desc
+        if (rows.length === 0) {
+          setHistoryScores([]);
+          return;
+        }
         const ranked = rows
           .map(row => {
             const char = CHARS.find(c => c.name.toLowerCase() === row.emochi_name.toLowerCase());
+            console.log("[history] row:", row.emochi_name, "→ char:", char?.name);
             if (!char) return null;
             return { ...char, score: row.score, level: Math.min(10, Math.floor(row.score / 10)) };
           })
           .filter(Boolean)
           .sort((a, b) => b.score - a.score);
+        console.log("[history] ranked:", ranked.length, "items");
         setHistoryScores(ranked);
       })
-      .catch(() => setHistoryScores([]))
+      .catch((e) => { console.error("[history] fetch error:", e); setHistoryScores([]); })
       .finally(() => setHistoryLoading(false));
   }, [historyOpen, historyDate]);
 
@@ -1032,14 +1043,40 @@ export default function MainPage() {
                       flexDirection: "column",
                       gap: 10,
                     }}>
-                      {/* Agent name */}
-                      <div style={{
-                        color: charPopup.char.color,
-                        fontSize: 22,
-                        fontWeight: 900,
-                        lineHeight: 1.1,
-                      }}>
-                        {charPopup.char.name}
+                      {/* Agent name + level/score */}
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{
+                          color: charPopup.char.color,
+                          fontSize: 22,
+                          fontWeight: 900,
+                          lineHeight: 1.1,
+                        }}>
+                          {charPopup.char.name}
+                        </div>
+                        {!charPopup.char.noLevel && (
+                          <div style={{
+                            display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0,
+                          }}>
+                            <div style={{
+                              fontSize: 13, fontWeight: 800, color: charPopup.char.color,
+                              background: charPopup.char.color + "18", borderRadius: 20,
+                              padding: "3px 10px", border: `1px solid ${charPopup.char.color}40`,
+                            }}>
+                              Lv.{charPopup.char.level}
+                            </div>
+                            {charPopup.char.score != null && (
+                              <div style={{
+                                fontSize: 12, fontWeight: 700,
+                                color: charPopup.char.score > charPopup.char.level ? "#22c55e"
+                                     : charPopup.char.score < charPopup.char.level ? "#ef4444" : "#aaa",
+                              }}>
+                                {charPopup.char.score > charPopup.char.level ? `▲ ${charPopup.char.score} pts`
+                                 : charPopup.char.score < charPopup.char.level ? `▼ ${charPopup.char.score} pts`
+                                 : `${charPopup.char.score} pts`}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Role pill */}
@@ -1669,28 +1706,25 @@ function CharNode({ char, hovered, onEnter, onLeave, onClick }) {
           }}
           priority={char.isMain}
         />
+        {!char.noLevel && (
+          <div style={{
+            position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)",
+            display: "flex", alignItems: "center", gap: 5,
+            background: "rgba(255,255,255,0.92)", borderRadius: 20,
+            padding: "3px 10px", backdropFilter: "blur(6px)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.12)", whiteSpace: "nowrap",
+          }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: char.color }}>Lv.{char.level}</span>
+            {char.score != null && char.score !== char.level ? (
+              <span style={{ fontSize: 11, fontWeight: 700, color: char.score > char.level ? "#22c55e" : "#ef4444" }}>
+                {char.score > char.level ? `▲${char.score}` : `▼${char.score}`}
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#aaa" }}>{char.score ?? char.level} pts</span>
+            )}
+          </div>
+        )}
       </div>
-      {!char.noLevel && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 6, marginTop: 6,
-          background: "rgba(255,255,255,0.88)", borderRadius: 20,
-          padding: "4px 12px", backdropFilter: "blur(6px)",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
-        }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: char.color }}>Lv.{char.level}</span>
-          {char.score != null && char.score !== char.level && (
-            <span style={{
-              fontSize: 11, fontWeight: 700,
-              color: char.score > char.level ? "#22c55e" : "#ef4444",
-            }}>
-              {char.score > char.level ? `▲ ${char.score}` : `▼ ${char.score}`}
-            </span>
-          )}
-          {(char.score == null || char.score === char.level) && (
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#999" }}>{char.score ?? char.level} pts</span>
-          )}
-        </div>
-      )}
     </div>
   );
 }

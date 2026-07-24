@@ -1403,6 +1403,27 @@ function CharNode({ char, hovered, onEnter, onLeave, onClick }) {
           priority={char.isMain}
         />
       </div>
+      {!char.noLevel && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6, marginTop: 6,
+          background: "rgba(255,255,255,0.88)", borderRadius: 20,
+          padding: "4px 12px", backdropFilter: "blur(6px)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
+        }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: char.color }}>Lv.{char.level}</span>
+          {char.score != null && char.score !== char.level && (
+            <span style={{
+              fontSize: 11, fontWeight: 700,
+              color: char.score > char.level ? "#22c55e" : "#ef4444",
+            }}>
+              {char.score > char.level ? `▲ ${char.score}` : `▼ ${char.score}`}
+            </span>
+          )}
+          {(char.score == null || char.score === char.level) && (
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#999" }}>{char.score ?? char.level} pts</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

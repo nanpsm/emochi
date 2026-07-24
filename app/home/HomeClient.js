@@ -1,6 +1,10 @@
-import HomeClient from "./HomeClient";
+"use client";
 
-export const dynamic = "force-dynamic";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import Image from "next/image";
+import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 const INK = "#1a1a2e";
 
@@ -211,7 +215,7 @@ function calcDeltas(selectedFeelings, sleepIdx, workIdx) {
 
 // ── Main page ─────────────────────────────────────────────────
 
-export default function MainPage() {
+export default function HomeClient() {
   const router = useRouter();
   const [scale, setScale]           = useState(1);
   const [friendsOpen, setFriends]   = useState(false);
@@ -223,7 +227,6 @@ export default function MainPage() {
   const [historyDate, setHistoryDate] = useState(getCheckinDate);
   const [historyScores, setHistoryScores] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [musicPlaying, setMusicPlaying] = useState(false);
   const [hovChar, setHovChar]       = useState(null);
   const [charPopup, setCharPopup]   = useState(null);
   const [profileOpen, setProfile]   = useState(false);
@@ -261,7 +264,9 @@ export default function MainPage() {
   const [selectedWork, setSelectedWork]         = useState(null);
   const [checkinDone, setCheckinDone]           = useState(false);
   const [cloudTab, setCloudTab]                 = useState(0); // 0=Mood 1=Sleep 2=Work
+  const [wiseyTips, setWiseyTips]               = useState(null); // array of suggestions or null
   const [wiseyIdx, setWiseyIdx]                 = useState(0);
+  const [wiseyLoading, setWiseyLoading]         = useState(false);
 
   useEffect(() => {
     const upd = () =>
@@ -293,24 +298,18 @@ export default function MainPage() {
       .catch(() => {});
   }, []);
 
-  // Sync music state from layout's MusicPlayer
+  // Auto-cycle the cloud stat widget every 4 seconds
   useEffect(() => {
-    const onState = (e) => setMusicPlaying(e.detail.playing);
-    window.addEventListener("emochi:music-state", onState);
-    // Query current state on mount
-    window.dispatchEvent(new Event("emochi:music-query"));
-    return () => window.removeEventListener("emochi:music-state", onState);
-  }, []);
-
-  // Auto-cycle cloud tab and Wisey tip every 4 seconds
-  useEffect(() => {
-    const id = setInterval(() => {
-      setCloudTab(t => (t + 1) % 3);
-      setWiseyIdx(i => i + 1);
-    }, 4000);
+    const id = setInterval(() => setCloudTab(t => (t + 1) % 3), 4000);
     return () => clearInterval(id);
   }, []);
 
+  // Auto-cycle through Wisey's suggestions (when there's more than one) every 5 seconds
+  useEffect(() => {
+    if (!wiseyTips || wiseyTips.length <= 1) return;
+    const id = setInterval(() => setWiseyIdx(i => (i + 1) % wiseyTips.length), 5000);
+    return () => clearInterval(id);
+  }, [wiseyTips]);
   // Fetch history scores from DB whenever the panel opens or date changes
   useEffect(() => {
     if (!historyOpen) return;
@@ -551,6 +550,31 @@ export default function MainPage() {
       { icon: "💼", label: "Work",  short: work.short,  pct: work.pct,  color: "#f59e0b" },
       { icon: "😊", label: "Mood",  short: mood.emoji,  pct: mood.pct,  color: "#22c55e" },
     ]);
+    if (sleep.pct > 0) fetchWiseyTip(feelingIdxs, sleepIdx, workIdx, sleep, work, mood);
+  }
+
+  // Ask the real Wisey Foundry agent for several personalized insights using
+  // today's actual check-in data (sleep/work/mood + which emotions shifted).
+  // Falls back to the canned tips silently if Foundry is unreachable.
+  async function fetchWiseyTip(feelingIdxs, sleepIdx, workIdx, sleep, work, mood) {
+    setWiseyLoading(true);
+    try {
+      const deltas = calcDeltas(feelingIdxs, sleepIdx, workIdx);
+      const r = await fetch("/api/wisey-tip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userName, sleep, work, mood, deltas }),
+      });
+      const data = await r.json();
+      if (r.ok && data.replies?.length > 0) {
+        setWiseyTips(data.replies);
+        setWiseyIdx(0);
+      }
+    } catch {
+      // keep the canned fallback tip on any network/auth failure
+    } finally {
+      setWiseyLoading(false);
+    }
   }
 
   function submitCheckin() {
@@ -648,34 +672,6 @@ export default function MainPage() {
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {/* Music toggle */}
-              <button
-                onClick={() => window.dispatchEvent(new Event("emochi:music-toggle"))}
-                title={musicPlaying ? "Turn off music" : "Turn on music"}
-                style={{
-                  width: 42, height: 42, borderRadius: "50%", border: "1px solid #e8e8e8",
-                  background: musicPlaying ? "#C9A857" : "rgba(255,255,255,.7)",
-                  backdropFilter: "blur(8px)", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  boxShadow: musicPlaying ? "0 2px 12px rgba(201,168,87,.4)" : "none",
-                  transition: "background .2s, box-shadow .2s", flexShrink: 0,
-                }}
-              >
-                {musicPlaying ? (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <path d="M3 9v6h4l5 5V4L7 9H3z" fill="#fff" />
-                    <path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z" fill="#fff" />
-                    <path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" fill="#fff" />
-                  </svg>
-                ) : (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                    <path d="M3 9v6h4l5 5V4L7 9H3z" fill="#C9A857" />
-                    <line x1="17" y1="9" x2="23" y2="15" stroke="#C9A857" strokeWidth="2.2" strokeLinecap="round" />
-                    <line x1="23" y1="9" x2="17" y2="15" stroke="#C9A857" strokeWidth="2.2" strokeLinecap="round" />
-                  </svg>
-                )}
-              </button>
-
               <button className="avatar-pill" onClick={openProfile} style={{
                 display: "flex", alignItems: "center", gap: 10,
                 padding: "7px 20px 7px 7px", borderRadius: 50,
@@ -1024,9 +1020,11 @@ export default function MainPage() {
 
           {/* ══ WISEY DAILY SUGGESTION ══ */}
           {(() => {
-            const wiseyChar = enrichedChars.find(c => c.id === "wisey");
-            const tips = getWiseySuggestions(stats);
-            const tip  = tips[wiseyIdx % tips.length];
+            const wiseyChar = CHARS.find(c => c.id === "wisey");
+            const tips = wiseyLoading
+              ? ["Thinking about your day…"]
+              : wiseyTips?.length > 0 ? wiseyTips : getWiseySuggestions(stats);
+            const tip = tips[wiseyIdx % tips.length];
             return (
               <div style={{
                 position: "absolute", top: 100, left: "50%",
@@ -1045,22 +1043,39 @@ export default function MainPage() {
                   <Image src={`/idle/${wiseyChar.file.toLowerCase()}`} alt="Wisey" fill style={{ objectFit: "cover" }} />
                 </div>
                 {/* Message bubble */}
-                <div style={{
-                  background: "rgba(255,255,255,.92)",
-                  backdropFilter: "blur(14px)",
-                  borderRadius: "4px 20px 20px 20px",
-                  padding: "14px 22px 16px",
-                  boxShadow: "0 6px 28px rgba(0,0,0,.12)",
-                  border: `1px solid ${wiseyChar.color}30`,
-                }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: wiseyChar.color, letterSpacing: .3, marginBottom: 6 }}>
-                    Wisey
+                <div
+                  onClick={() => tips.length > 1 && setWiseyIdx(i => (i + 1) % tips.length)}
+                  style={{
+                    background: "rgba(255,255,255,.92)",
+                    backdropFilter: "blur(14px)",
+                    borderRadius: "4px 20px 20px 20px",
+                    padding: "14px 22px 16px",
+                    boxShadow: "0 6px 28px rgba(0,0,0,.12)",
+                    border: `1px solid ${wiseyChar.color}30`,
+                    cursor: tips.length > 1 ? "pointer" : "default",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: wiseyChar.color, letterSpacing: .3 }}>
+                      Wisey
+                    </div>
+                    {tips.length > 1 && (
+                      <div style={{ display: "flex", gap: 5 }}>
+                        {tips.map((_, i) => (
+                          <div key={i} style={{
+                            width: i === wiseyIdx % tips.length ? 14 : 6, height: 6, borderRadius: 4,
+                            background: i === wiseyIdx % tips.length ? wiseyChar.color : "#ddd",
+                            transition: "all .3s",
+                          }} />
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div
-                    key={wiseyIdx}
+                    key={tip}
                     style={{
                       fontSize: 16, fontWeight: 600, color: "#29293a",
-                      lineHeight: 1.6, maxWidth: 420,
+                      lineHeight: 1.6, maxWidth: 420, whiteSpace: "pre-wrap",
                       animation: "wiseyFade .4s ease",
                     }}
                   >

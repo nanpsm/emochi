@@ -20,12 +20,20 @@ export async function POST(req) {
   }
 
   const { interests } = await req.json();
-  if (!Array.isArray(interests) || interests.length === 0) {
-    return NextResponse.json({ error: "No interests provided" }, { status: 400 });
+  if (!Array.isArray(interests)) {
+    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
   const pool = await getPool();
   const userId = session.user.dbId;
+
+  // Allow clearing all interests
+  if (interests.length === 0) {
+    await pool.request()
+      .input("user_id", sql.UniqueIdentifier, userId)
+      .query("DELETE FROM user_interests WHERE user_id = @user_id");
+    return NextResponse.json({ ok: true });
+  }
 
   // Look up interest ids by name
   const nameList = interests.map(n => `N'${n.replace(/'/g, "''")}'`).join(",");

@@ -87,7 +87,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return token;
     },
     async session({ session, token }) {
-      if (token.dbId) {
+      if (token.dbId && session.user) {
         session.user.dbId = token.dbId;
         session.user.isNewUser = token.isNewUser ?? false;
         session.user.hasOnboarded = token.hasOnboarded ?? true;

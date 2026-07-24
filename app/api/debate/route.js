@@ -17,6 +17,7 @@ Characters:
 
 Respond with a JSON object (no markdown, no code fences) with this exact structure:
 {
+  "summary": "A neutral, concise summary of the user's topic in no more than 12 words.",
   "cheer": "...",
   "fear": "...",
   "buzzy": "...",
@@ -55,9 +56,9 @@ export async function POST(req) {
       return NextResponse.json({ error: "No response from Claude" }, { status: 500 });
     }
 
-    const responses = JSON.parse(textBlock.text);
+    const { summary, ...responses } = JSON.parse(textBlock.text);
 
-    return NextResponse.json({ responses });
+    return NextResponse.json({ summary, responses });
   } catch (error) {
     console.error("Debate API error:", error);
     if (error instanceof SyntaxError) {

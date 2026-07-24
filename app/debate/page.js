@@ -1,389 +1,318 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
-const INK = "#1a1a2e";
-
-// Table center and ellipse radii (within 1600×900 canvas)
-const CX = 800, CY = 460;
-const RX = 340, RY = 210;
-
-const SEATS = [
-  { id: "cheer",  name: "Cheer",  color: "#FFC53D", tint: "#FFF3D3", angle: 270,   size: 112, role: "Joy" },
-  { id: "fear",   name: "Fear",   color: "#A78BFA", tint: "#EDE6FE", angle: 321.4, size: 108, role: "Caution" },
-  { id: "buzzy",  name: "Buzzy",  color: "#FF6B4A", tint: "#FFE4DC", angle: 12.9,  size: 110, role: "Drive" },
-  { id: "bubble", name: "Bubble", color: "#F97316", tint: "#FFEDD9", angle: 64.3,  size: 108, role: "Creativity" },
-  { id: "dozy",   name: "Dozy",   color: "#6C7A96", tint: "#E4E8F2", angle: 115.7, size: 108, role: "Rest" },
-  { id: "zen",    name: "Zen",    color: "#5FD4C4", tint: "#DFF9F4", angle: 167.1, size: 110, role: "Peace" },
-  { id: "tear",   name: "Tear",   color: "#4A90D9", tint: "#DCEBFB", angle: 218.6, size: 108, role: "Empathy" },
+const CHARACTERS = [
+  { id: "bubble", name: "Bubble", file: "bubble.png", left: 18, top: 30, size: 220, color: "#F97316", bubble: { left: 27, top: 18 } },
+  { id: "wisey", name: "Wisey", file: "wisey-judge.png", left: 49.5, top: 32.5, size: 185, color: "#C9A857" },
+  { id: "buzzy", name: "Buzzy", file: "buzzy.png", left: 78, top: 30, size: 220, color: "#FF6B4A", bubble: { left: 68, top: 18 } },
+  { id: "cheer", name: "Cheer", file: "cheer.png", left: 72, top: 54, size: 210, color: "#FFC53D", bubble: { left: 79, top: 43 } },
+  { id: "fear", name: "Fear", file: "fear.png", left: 28, top: 54, size: 200, color: "#A78BFA", bubble: { left: 18, top: 43 } },
+  { id: "tear", name: "Tear", file: "tear.png", left: 12, top: 60, size: 220, color: "#4A90D9", bubble: { left: 19, top: 67 } },
+  { id: "zen", name: "Zen", file: "zen.png", left: 90, top: 60, size: 220, color: "#5FD4C4", bubble: { left: 80, top: 67 } },
+  { id: "dozy", name: "Dozy", file: "dozy.png", left: 67, top: 76, size: 220, color: "#6C7A96", bubble: { left: 58, top: 76 } },
 ];
 
-const WISEY = { id: "wisey", name: "Wisey", color: "#C9A857", tint: "#FBF3D9", size: 150, role: "Wisdom" };
-
-// Personality-driven debate stances (shown before topic submitted)
-const IDLE_LINES = {
-  cheer:  "Ready to find the bright side! 🌟",
-  fear:   "Let's think about the risks first…",
-  buzzy:  "Don't hold back — say it loud!",
-  bubble: "Oh! I have so many ideas already!",
-  dozy:   "Can we keep this brief? 😴",
-  zen:    "Let's breathe and stay balanced.",
-  tear:   "I just want everyone to feel heard.",
-  wisey:  "Speak your mind. I'll hear all sides.",
-};
-
-function seatPos(angleDeg) {
-  const rad = (angleDeg * Math.PI) / 180;
-  return { x: CX + RX * Math.cos(rad), y: CY + RY * Math.sin(rad) };
-}
-
-// Is the seat on the top half? (angle in 180–360 range = y above center)
-function isTop(angle) {
-  const a = ((angle % 360) + 360) % 360;
-  return a > 180 && a < 360;
-}
+const SPEAKING_ORDER = ["bubble", "buzzy", "fear", "cheer", "tear", "zen", "dozy"];
+const SPEAKING_TIME = 4800;
 
 export default function DebatePage() {
-  const router = useRouter();
   const [scale, setScale] = useState(1);
   const [topic, setTopic] = useState("");
-  const [phase, setPhase] = useState("idle"); // idle | loading | debating
-  const [bubbles, setBubbles] = useState(IDLE_LINES);
-  const [speaking, setSpeaking] = useState(null);
-  const inputRef = useRef(null);
-  const seqRef = useRef(null);
+  const [topicSummary, setTopicSummary] = useState("");
+  const [responses, setResponses] = useState(null);
+  const [activeSpeaker, setActiveSpeaker] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const timers = useRef([]);
 
   useEffect(() => {
-    const upd = () =>
-      setScale(Math.min(window.innerWidth / 1600, window.innerHeight / 900));
-    upd();
-    window.addEventListener("resize", upd);
-    return () => window.removeEventListener("resize", upd);
+    const resize = () => setScale(Math.min(window.innerWidth / 1600, window.innerHeight / 900));
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
   }, []);
 
-  async function startDebate() {
-    if (!topic.trim() || phase === "loading") return;
-    setPhase("loading");
-    setBubbles(Object.fromEntries(
-      [...SEATS.map(s => s.id), "wisey"].map(id => [id, "thinking…"])
-    ));
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+
+  function playDebate(nextResponses) {
+    timers.current.forEach(clearTimeout);
+    timers.current = [];
+    setResponses(nextResponses);
+    setActiveSpeaker(SPEAKING_ORDER[0]);
+
+    SPEAKING_ORDER.forEach((id, index) => {
+      if (index > 0) {
+        timers.current.push(setTimeout(() => setActiveSpeaker(id), index * SPEAKING_TIME));
+      }
+    });
+    timers.current.push(
+      setTimeout(() => setActiveSpeaker(null), SPEAKING_ORDER.length * SPEAKING_TIME),
+    );
+  }
+
+  async function startDebate(event) {
+    event.preventDefault();
+    const nextTopic = topic.trim();
+    if (!nextTopic || loading) return;
+
+    setLoading(true);
+    setError("");
+    setActiveSpeaker(null);
+    timers.current.forEach(clearTimeout);
 
     try {
-      const res = await fetch("/api/debate", {
+      const response = await fetch("/api/debate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: topic.trim() }),
+        body: JSON.stringify({ topic: nextTopic }),
       });
-      const data = await res.json();
-      if (data.responses) {
-        setPhase("debating");
-        setBubbles(data.responses);
-        // Animate one character speaking at a time
-        const order = [...SEATS.map(s => s.id), "wisey"];
-        let i = 0;
-        function next() {
-          if (i >= order.length) { setSpeaking(null); return; }
-          setSpeaking(order[i++]);
-          seqRef.current = setTimeout(next, 2200);
-        }
-        next();
-      }
-    } catch {
-      setBubbles(IDLE_LINES);
-      setPhase("idle");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "The debate could not begin.");
+
+      setTopicSummary(data.summary || nextTopic);
+      playDebate(data.responses);
+      setTopic("");
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
     }
   }
 
-  function reset() {
-    clearTimeout(seqRef.current);
-    setTopic("");
-    setPhase("idle");
-    setBubbles(IDLE_LINES);
-    setSpeaking(null);
-  }
+  const speaker = CHARACTERS.find((character) => character.id === activeSpeaker);
 
   return (
-    <>
-      <style>{`
-        @keyframes floatUp { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
-        @keyframes popIn { from{opacity:0;transform:scale(.8) translateY(8px)} to{opacity:1;transform:none} }
-        @keyframes glow { 0%,100%{box-shadow:0 0 0 0 rgba(201,168,87,0)} 50%{box-shadow:0 0 24px 6px rgba(201,168,87,.3)} }
-        .seat-char { transition: transform .2s; cursor: default; }
-        .seat-char.speaking { transform: scale(1.08) translateY(-6px); }
-        .bubble-pop { animation: popIn .3s cubic-bezier(.34,1.56,.64,1) both; }
-        .btn-start:hover { transform: translateY(-2px) scale(1.02); }
-        .btn-start { transition: transform .2s, box-shadow .2s; }
-        .thinking-dot::after { content: ''; animation: pulse 1s infinite; }
-      `}</style>
+    <main className="debate-viewport">
+      <Image
+        src="/debate.png"
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        style={{ objectFit: "fill" }}
+      />
+      <div className="debate-stage" style={{ transform: `scale(${scale})` }}>
+        {topicSummary && (
+          <section className="topic-panel" aria-live="polite">
+            <span>Today&apos;s topic</span>
+            <p>{topicSummary}</p>
+          </section>
+        )}
 
-      <div style={{
-        position: "fixed", inset: 0,
-        background: "linear-gradient(160deg,#fffdf0 0%,#fff8d6 60%,#fffef5 100%)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontFamily: "var(--font-baloo), 'Baloo 2', sans-serif",
-      }}>
-        <div style={{
-          position: "relative", width: 1600, height: 900, flex: "none",
-          transform: `scale(${scale})`, transformOrigin: "center center",
-          overflow: "hidden",
-        }}>
-
-          {/* ── Top bar ── */}
-          <div style={{
-            position: "absolute", top: 0, left: 0, right: 0, height: 72,
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "0 36px", borderBottom: "1px solid rgba(0,0,0,.06)", zIndex: 30,
-            background: "rgba(255,253,240,.92)", backdropFilter: "blur(8px)",
-          }}>
-            <button onClick={() => router.push("/home")} style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "8px 18px", borderRadius: 30,
-              background: "#f5f5f5", border: "1px solid #e8e8e8",
-              cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#555",
-            }}>← Back</button>
-
-            <div style={{ fontSize: 28, fontWeight: 800, color: INK, letterSpacing: .5,
-              position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
-              <span style={{ color: "#ffb703" }}>Emo</span>chi{" "}
-              <span style={{ color: "#C9A857", fontSize: 22 }}>⚖ Debate Room</span>
-            </div>
-
-            {phase === "debating" && (
-              <button onClick={reset} style={{
-                padding: "8px 20px", borderRadius: 30,
-                background: "#f5f5f5", border: "1px solid #e8e8e8",
-                cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#555",
-              }}>New Topic</button>
-            )}
+        {CHARACTERS.map((character) => (
+          <div
+            key={character.id}
+            className={`character ${activeSpeaker === character.id ? "is-speaking" : ""}`}
+            style={{
+              left: `${character.left}%`,
+              top: `${character.top}%`,
+              width: character.size,
+              height: character.size,
+              "--character-color": character.color,
+            }}
+          >
+            <Image
+              src={`/idle/${character.file}`}
+              alt={character.name}
+              width={character.size}
+              height={character.size}
+              style={{ width: "100%", height: "100%", objectFit: "contain" }}
+            />
           </div>
+        ))}
 
-          {/* ── Table ── */}
-          <div style={{
-            position: "absolute",
-            left: CX - RX - 20,
-            top: CY - RY - 20,
-            width: (RX + 20) * 2,
-            height: (RY + 20) * 2,
-            borderRadius: "50%",
-            background: "radial-gradient(ellipse at 40% 35%, #2e2414 0%, #1a1208 60%, #110d06 100%)",
-            boxShadow: "0 24px 80px rgba(0,0,0,.35), inset 0 2px 8px rgba(255,255,255,.06)",
-            border: "6px solid #3d2e12",
-          }} />
-          {/* Table inner ring highlight */}
-          <div style={{
-            position: "absolute",
-            left: CX - RX + 18,
-            top: CY - RY + 18,
-            width: (RX - 18) * 2,
-            height: (RY - 18) * 2,
-            borderRadius: "50%",
-            border: "2px solid rgba(201,168,87,.18)",
-            pointerEvents: "none",
-          }} />
+        {speaker && responses?.[speaker.id] && (
+          <aside
+            key={speaker.id}
+            className="speech-bubble"
+            style={{
+              left: `${speaker.bubble.left}%`,
+              top: `${speaker.bubble.top}%`,
+              "--character-color": speaker.color,
+              "--bubble-fill": `${speaker.color}B8`,
+            }}
+            aria-live="polite"
+          >
+            <strong>{speaker.name}</strong>
+            <p>{responses[speaker.id]}</p>
+          </aside>
+        )}
 
-          {/* ── Wisey in the CENTER ── */}
-          <div style={{
-            position: "absolute",
-            left: CX - WISEY.size * 0.55,
-            top: CY - WISEY.size * 0.92,
-            zIndex: 20,
-            animation: "glow 3s ease-in-out infinite",
-            borderRadius: "50%",
-          }}>
-            {/* Glow ring behind Wisey */}
-            <div style={{
-              position: "absolute", inset: -16,
-              borderRadius: "50%",
-              background: `radial-gradient(ellipse, ${WISEY.color}33 0%, transparent 70%)`,
-            }} />
-            <div style={{ position: "relative", width: WISEY.size * 1.1, height: WISEY.size * 1.3 }}>
-              <Image src="/idle/wisey.png" alt="Wisey" fill style={{ objectFit: "contain" }} priority />
-            </div>
-            {/* Wisey label */}
-            <div style={{
-              textAlign: "center", marginTop: -8,
-              fontSize: 12, fontWeight: 800, color: WISEY.color, letterSpacing: 2,
-              textTransform: "uppercase",
-            }}>Wisey · Mediator</div>
-            {/* Wisey speech bubble */}
-            {bubbles.wisey && (
-              <div key={bubbles.wisey} className="bubble-pop" style={{
-                position: "absolute", bottom: "110%", left: "50%",
-                transform: "translateX(-50%)",
-                background: "#fff",
-                border: `2px solid ${WISEY.color}`,
-                borderRadius: 14,
-                padding: "8px 14px",
-                fontSize: 12, fontWeight: 600, color: INK,
-                whiteSpace: "nowrap", maxWidth: 220,
-                whiteSpace: "normal", textAlign: "center",
-                boxShadow: `0 4px 18px ${WISEY.color}33`,
-                zIndex: 40,
-              }}>
-                {bubbles.wisey === "thinking…" ? <ThinkingDots /> : bubbles.wisey}
-                <div style={{
-                  position: "absolute", bottom: -8, left: "50%", transform: "translateX(-50%)",
-                  width: 0, height: 0,
-                  borderLeft: "7px solid transparent", borderRight: "7px solid transparent",
-                  borderTop: `8px solid ${WISEY.color}`,
-                }} />
-              </div>
-            )}
-          </div>
-
-          {/* ── Seated characters ── */}
-          {SEATS.map((seat) => {
-            const { x, y } = seatPos(seat.angle);
-            const top = isTop(seat.angle);
-            const bubble = bubbles[seat.id];
-            const isSpeak = speaking === seat.id;
-
-            // Position image so feet touch the ellipse edge
-            const iW = seat.size * 0.85;
-            const iH = seat.size;
-            const imgLeft = x - iW / 2;
-            const imgTop = top ? y - iH : y;
-
-            // Bubble above head (top seats) or below feet (bottom seats)
-            const bubbleBottom = top
-              ? iH + 14
-              : undefined;
-            const bubbleTop = !top ? iH + 14 : undefined;
-
-            return (
-              <div key={seat.id} style={{ position: "absolute", left: imgLeft, top: imgTop, zIndex: 15 }}>
-                {/* Character image */}
-                <div className={`seat-char${isSpeak ? " speaking" : ""}`}
-                  style={{
-                    position: "relative", width: iW, height: iH,
-                    filter: `drop-shadow(0 8px 16px rgba(0,0,0,.2))`,
-                    animation: isSpeak ? "floatUp 1.2s ease-in-out infinite" : "none",
-                  }}
-                >
-                  <Image src={`/idle/${seat.id}.png`} alt={seat.name} fill style={{ objectFit: "contain" }} />
-                </div>
-
-                {/* Name tag */}
-                <div style={{
-                  textAlign: "center", marginTop: top ? 2 : -6,
-                  fontSize: 10, fontWeight: 800,
-                  color: seat.color, letterSpacing: 1.5, textTransform: "uppercase",
-                }}>{seat.name}</div>
-
-                {/* Speech bubble */}
-                {bubble && (
-                  <div key={bubble} className="bubble-pop" style={{
-                    position: "absolute",
-                    bottom: bubbleBottom,
-                    top: bubbleTop,
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    background: isSpeak ? seat.tint : "#fff",
-                    border: `2px solid ${seat.color}`,
-                    borderRadius: 12,
-                    padding: "7px 12px",
-                    fontSize: 11, fontWeight: 600, color: INK,
-                    width: 160, textAlign: "center",
-                    boxShadow: isSpeak
-                      ? `0 4px 20px ${seat.color}55`
-                      : `0 2px 10px rgba(0,0,0,.08)`,
-                    zIndex: 40,
-                    transition: "background .3s, box-shadow .3s",
-                    lineHeight: 1.4,
-                  }}>
-                    {bubble === "thinking…" ? <ThinkingDots /> : bubble}
-                    {/* Tail */}
-                    <div style={{
-                      position: "absolute",
-                      ...(top
-                        ? { bottom: -8, left: "50%", transform: "translateX(-50%)",
-                            borderLeft: "6px solid transparent", borderRight: "6px solid transparent",
-                            borderTop: `8px solid ${seat.color}` }
-                        : { top: -8, left: "50%", transform: "translateX(-50%)",
-                            borderLeft: "6px solid transparent", borderRight: "6px solid transparent",
-                            borderBottom: `8px solid ${seat.color}` }),
-                      width: 0, height: 0,
-                    }} />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {/* ── Bottom input panel ── */}
-          <div style={{
-            position: "absolute", bottom: 0, left: 0, right: 0,
-            height: 110,
-            background: "rgba(255,253,240,.95)", backdropFilter: "blur(10px)",
-            borderTop: "1px solid rgba(0,0,0,.07)",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 16,
-            padding: "0 60px", zIndex: 30,
-          }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#aaa", whiteSpace: "nowrap" }}>
-              ⚖️ Topic:
-            </div>
+        <form className="topic-form" onSubmit={startDebate}>
+          <div>
             <input
-              ref={inputRef}
+              id="debate-topic"
+              aria-label="Debate topic"
               value={topic}
-              onChange={e => setTopic(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && startDebate()}
-              disabled={phase !== "idle"}
-              placeholder="Type a topic or situation to debate..."
-              style={{
-                flex: 1, maxWidth: 700,
-                padding: "14px 22px", borderRadius: 40,
-                border: "2px solid #e8e8e8", fontSize: 15, fontWeight: 600,
-                color: INK, background: "#fafafa", outline: "none",
-                fontFamily: "inherit",
-                transition: "border-color .2s",
-              }}
-              onFocus={e => e.target.style.borderColor = "#C9A857"}
-              onBlur={e => e.target.style.borderColor = "#e8e8e8"}
+              onChange={(event) => setTopic(event.target.value)}
+              placeholder="Tell us what’s on your mind…"
+              maxLength={500}
+              disabled={loading}
             />
             <button
-              className="btn-start"
-              onClick={startDebate}
-              disabled={!topic.trim() || phase !== "idle"}
-              style={{
-                padding: "14px 36px", borderRadius: 40,
-                background: topic.trim() && phase === "idle"
-                  ? "linear-gradient(135deg,#1a1a2e,#2e1f5e)"
-                  : "#e8e8e8",
-                border: topic.trim() && phase === "idle"
-                  ? "1.5px solid rgba(201,168,87,.4)"
-                  : "none",
-                cursor: topic.trim() && phase === "idle" ? "pointer" : "not-allowed",
-                color: topic.trim() && phase === "idle" ? "#f7d774" : "#aaa",
-                fontWeight: 800, fontSize: 15,
-                fontFamily: "inherit", letterSpacing: 1,
-                boxShadow: topic.trim() && phase === "idle"
-                  ? "0 4px 20px rgba(26,26,46,.25)"
-                  : "none",
-                whiteSpace: "nowrap",
-              }}
+              type="submit"
+              disabled={loading || !topic.trim()}
+              aria-label={loading ? "Starting debate" : "Ask the room"}
+              title={loading ? "Starting debate" : "Ask the room"}
             >
-              {phase === "loading" ? "Thinking…" : "Start Debate ⚖️"}
+              <span className="material-symbols-outlined" aria-hidden="true">
+                {loading ? "progress_activity" : "arrow_upward"}
+              </span>
             </button>
           </div>
-
-        </div>
+          {error && <p className="form-error">{error}</p>}
+        </form>
       </div>
-    </>
-  );
-}
 
-function ThinkingDots() {
-  return (
-    <span style={{ letterSpacing: 2 }}>
-      {[0, 1, 2].map((i) => (
-        <span key={i} style={{
-          display: "inline-block",
-          animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite`,
-        }}>·</span>
-      ))}
-    </span>
+      <style jsx>{`
+        .debate-viewport {
+          position: fixed;
+          inset: 0;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #d8c18f;
+          font-family: var(--font-baloo), "Baloo 2", "Segoe UI", sans-serif;
+        }
+        .debate-stage {
+          position: relative;
+          z-index: 1;
+          width: 1600px;
+          height: 900px;
+          flex: none;
+          transform-origin: center;
+          overflow: hidden;
+        }
+        .character {
+          position: absolute;
+          z-index: 3;
+          transform: translate(-50%, -50%);
+          filter: drop-shadow(0 10px 14px rgba(0, 0, 0, .35));
+          transition: filter .25s ease;
+        }
+        .character.is-speaking {
+          z-index: 5;
+          animation: character-talk .72s ease-in-out infinite alternate;
+          filter: drop-shadow(0 0 22px color-mix(in srgb, var(--character-color) 75%, white));
+        }
+        .topic-panel {
+          position: absolute;
+          z-index: 4;
+          left: 50%;
+          top: 48%;
+          width: 370px;
+          min-height: 108px;
+          padding: 18px 25px;
+          transform: translate(-50%, -50%);
+          border: 1px solid rgba(255, 255, 255, .48);
+          border-radius: 25px;
+          background: rgba(255, 250, 230, .28);
+          box-shadow: 0 12px 34px rgba(87, 57, 18, .15);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          text-align: center;
+          color: #4d351e;
+        }
+        .topic-panel span {
+          display: block;
+          margin-bottom: 4px;
+          color: rgba(77, 53, 30, .7);
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+        }
+        .topic-panel p, .speech-bubble p { margin: 0; }
+        .topic-panel p { font-size: 19px; font-weight: 750; line-height: 1.28; }
+        .speech-bubble {
+          position: absolute;
+          z-index: 12;
+          width: 310px;
+          padding: 18px 21px;
+          transform: translate(-50%, -50%);
+          color: #fff;
+          border: 1px solid rgba(255, 255, 255, .5);
+          border-radius: 24px;
+          background: var(--bubble-fill);
+          box-shadow: 0 13px 32px rgba(41, 27, 14, .22);
+          backdrop-filter: blur(4px);
+          -webkit-backdrop-filter: blur(4px);
+          animation: bubble-arrive .36s cubic-bezier(.2, .9, .3, 1.2) both;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, .18);
+        }
+        .speech-bubble strong {
+          display: block;
+          margin-bottom: 3px;
+          font-size: 15px;
+          letter-spacing: .3px;
+        }
+        .speech-bubble p { font-size: 16px; font-weight: 600; line-height: 1.35; }
+        .topic-form {
+          position: absolute;
+          z-index: 20;
+          left: 50%;
+          bottom: 24px;
+          width: 650px;
+          padding: 10px;
+          transform: translateX(-50%);
+          border: 1px solid rgba(255, 255, 255, .55);
+          border-radius: 28px;
+          background: rgba(255, 250, 233, .48);
+          box-shadow: 0 12px 34px rgba(74, 45, 13, .2);
+          backdrop-filter: blur(10px);
+        }
+        .topic-form > div { display: flex; gap: 9px; }
+        .topic-form input {
+          flex: 1;
+          min-width: 0;
+          height: 45px;
+          padding: 0 17px;
+          outline: none;
+          border: 0;
+          border-radius: 18px;
+          background: transparent;
+          color: #3d2d20;
+          font: inherit;
+          font-size: 15px;
+        }
+        .topic-form:focus-within {
+          border-color: rgba(255, 255, 255, .85);
+          box-shadow: 0 12px 34px rgba(74, 45, 13, .2), 0 0 0 3px rgba(201, 168, 87, .18);
+        }
+        .topic-form button {
+          width: 45px;
+          height: 45px;
+          flex: 0 0 45px;
+          padding: 0;
+          border: 0;
+          border-radius: 9999px;
+          background: #5b3a21;
+          color: #fff9e9;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: transform .18s ease, opacity .18s ease;
+        }
+        .topic-form button:hover:not(:disabled) { transform: scale(1.5); }
+        .topic-form button .material-symbols-outlined { font-size: 23px; font-weight: 700; }
+        .topic-form button:disabled { cursor: default; opacity: .58; }
+        .form-error { margin: 7px 3px 0; color: #9e2f25; font-size: 12px; font-weight: 700; }
+        @keyframes bubble-arrive {
+          from { opacity: 0; transform: translate(-50%, -38%) scale(.78); }
+          to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+        @keyframes character-talk {
+          from { transform: translate(-50%, -50%) rotate(-1.5deg) scale(1); }
+          to { transform: translate(-50%, -53%) rotate(1.5deg) scale(1.035); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .character.is-speaking, .speech-bubble { animation: none; }
+        }
+      `}</style>
+    </main>
   );
 }

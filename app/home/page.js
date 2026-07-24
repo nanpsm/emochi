@@ -197,6 +197,7 @@ function calcDeltas(selectedFeelings, sleepIdx, workIdx) {
 export default function MainPage() {
   const [scale, setScale]           = useState(1);
   const [friendsOpen, setFriends]   = useState(false);
+  const [friendSearch, setFriendSearch] = useState("");
   const [historyOpen, setHistory]   = useState(false);
   const [historyDate, setHistoryDate] = useState(getCheckinDate);
   const [hovChar, setHovChar]       = useState(null);
@@ -353,18 +354,23 @@ export default function MainPage() {
             display: "flex", alignItems: "center", justifyContent: "space-between",
             padding: "0 36px", zIndex: 30,
           }}>
-            <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: .5, color: INK }}>
-              <span style={{ color: "#ffb703" }}>Emo</span>chi
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ position: "relative", width: 76, height: 76, flexShrink: 0 }}>
+                <Image src="/idle/logo.png" alt="Emochi logo" fill style={{ objectFit: "contain" }} />
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: .5, color: INK }}>
+                <span style={{ color: "#ffb703" }}>Emo</span>chi
+              </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <button className="avatar-pill" onClick={openProfile} style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "5px 14px 5px 5px", borderRadius: 40,
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "7px 20px 7px 7px", borderRadius: 50,
                 background: "rgba(255,255,255,.7)", border: "1.5px solid #ececec",
                 cursor: "pointer", transition: "filter .15s", backdropFilter: "blur(8px)",
               }}>
                 <div style={{
-                  width: 38, height: 38, borderRadius: "50%",
+                  width: 48, height: 48, borderRadius: "50%",
                   background: currentChar.color + "22",
                   border: `2px solid ${currentChar.color}`,
                   position: "relative", overflow: "hidden", flexShrink: 0,
@@ -372,35 +378,33 @@ export default function MainPage() {
                 }}>
                   <Image src={`/idle/${currentChar.file.toLowerCase()}`} alt={currentChar.name} fill style={{ objectFit: "cover" }} />
                 </div>
-                <span style={{ color: INK, fontWeight: 700, fontSize: 13 }}>{userName}</span>
+                <span style={{ color: INK, fontWeight: 700, fontSize: 15 }}>{userName}</span>
               </button>
               <button onClick={() => setHistory(o => !o)} style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "8px 14px", borderRadius: 30,
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "12px 20px", borderRadius: 36,
                 background: historyOpen ? "#6366f1" : "rgba(255,255,255,.7)",
                 border: "1px solid #e8e8e8", backdropFilter: "blur(8px)",
                 cursor: "pointer", transition: "background .2s",
               }}>
-                <span style={{ fontSize: 15 }}>📊</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: historyOpen ? "#fff" : "#555" }}>History</span>
+                <span style={{ fontSize: 18 }}>📊</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: historyOpen ? "#fff" : "#555" }}>History</span>
               </button>
               <button onClick={() => setFriends(o => !o)} style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "8px 14px", borderRadius: 30,
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "12px 20px", borderRadius: 36,
                 background: friendsOpen ? INK : "rgba(255,255,255,.7)",
                 border: "1px solid #e8e8e8", backdropFilter: "blur(8px)",
                 cursor: "pointer", transition: "background .2s",
               }}>
-                <span style={{ fontSize: 15 }}>👥</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: friendsOpen ? "#fff" : "#555" }}>Friends</span>
-                {FRIENDS.filter(f => f.online).length > 0 && (
-                  <span style={{
-                    width: 18, height: 18, borderRadius: "50%",
-                    background: "#22c55e", color: "#fff",
-                    fontSize: 9, fontWeight: 800,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>{FRIENDS.filter(f => f.online).length}</span>
-                )}
+                <span style={{ fontSize: 18 }}>👥</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: friendsOpen ? "#fff" : "#555" }}>Friends</span>
+                <span style={{
+                  width: 18, height: 18, borderRadius: "50%",
+                  background: "#5e8cff", color: "#fff",
+                  fontSize: 9, fontWeight: 800,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>{FRIENDS.length}</span>
               </button>
             </div>
           </div>
@@ -422,18 +426,26 @@ export default function MainPage() {
                   background: "#f0f0f0", border: "none", cursor: "pointer", fontSize: 13, color: "#777",
                 }}>✕</button>
               </div>
-              <div style={{ color: "#bbb", fontSize: 12, marginTop: 2 }}>
-                {FRIENDS.filter(f => f.online).length} online · {FRIENDS.length} total
+              <div style={{ marginTop: 10, position: "relative" }}>
+                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: "#bbb", pointerEvents: "none" }}>🔍</span>
+                <input
+                  type="text"
+                  placeholder="Search friends…"
+                  value={friendSearch}
+                  onChange={e => setFriendSearch(e.target.value)}
+                  style={{
+                    width: "100%", boxSizing: "border-box",
+                    padding: "8px 12px 8px 32px",
+                    borderRadius: 20, border: "1.5px solid #e8e8e8",
+                    background: "#f5f5f5", fontSize: 13, color: INK,
+                    outline: "none", fontFamily: "inherit",
+                  }}
+                />
               </div>
             </div>
             <div style={{ overflowY: "auto", flex: 1 }}>
               <div style={{ padding: "10px 0" }}>
-                <div style={{ padding: "4px 20px 6px", color: "#bbb", fontSize: 10, fontWeight: 700, letterSpacing: 1.5 }}>ONLINE</div>
-                {FRIENDS.filter(f => f.online).map(f => <FriendRow key={f.id} friend={f} />)}
-              </div>
-              <div style={{ padding: "4px 0" }}>
-                <div style={{ padding: "4px 20px 6px", color: "#bbb", fontSize: 10, fontWeight: 700, letterSpacing: 1.5 }}>OFFLINE</div>
-                {FRIENDS.filter(f => !f.online).map(f => <FriendRow key={f.id} friend={f} offline />)}
+                {FRIENDS.filter(f => f.name.toLowerCase().includes(friendSearch.toLowerCase())).map(f => <FriendRow key={f.id} friend={f} />)}
               </div>
             </div>
             <div style={{ padding: "14px 20px", borderTop: "1px solid #f0f0f0" }}>
@@ -877,11 +889,11 @@ export default function MainPage() {
                     </div>
                   );
 
-                  // Row configs: [rank indices, cardW, rowFlex]
+                  const CARD_W = 130;
                   const rows = [
-                    { agents: ranked.slice(1, 4), ranks: [2, 3, 4], cardW: 108, flex: "0 0 33%" },
-                    { agents: [ranked[0]],         ranks: [1],       cardW: 140, flex: "0 0 38%" },
-                    { agents: ranked.slice(4, 7),  ranks: [5, 6, 7], cardW: 96,  flex: "0 0 29%" },
+                    { agents: ranked.slice(1, 4), ranks: [2, 3, 4], flex: "1 1 0" },
+                    { agents: [ranked[0]],         ranks: [1],       flex: "1 1 0" },
+                    { agents: ranked.slice(4, 7),  ranks: [5, 6, 7], flex: "1 1 0" },
                   ];
 
                   return (
@@ -891,13 +903,13 @@ export default function MainPage() {
                       display: "flex", flexDirection: "column",
                       padding: "14px 36px 12px", gap: 10, overflow: "hidden",
                     }}>
-                      {rows.map(({ agents, ranks, cardW, flex: rowFlex }, ri) => (
+                      {rows.map(({ agents, ranks, flex: rowFlex }, ri) => (
                         <div key={ri} style={{
                           flex: rowFlex, minHeight: 0,
                           display: "flex", justifyContent: "center", alignItems: "stretch", gap: 16,
                         }}>
                           {agents.map((c, i) => (
-                            <RankCard key={c.id} char={c} rank={ranks[i]} cardW={cardW} />
+                            <RankCard key={c.id} char={c} rank={ranks[i]} cardW={CARD_W} />
                           ))}
                         </div>
                       ))}
@@ -1289,26 +1301,17 @@ function CloudWidget({ stats, cloudTab, onCycle }) {
 }
 
 /* ── Friend row ── */
-function FriendRow({ friend, offline }) {
+function FriendRow({ friend }) {
   return (
     <div className="friend-row" style={{
       display: "flex", alignItems: "center", gap: 12,
       padding: "8px 20px", cursor: "pointer",
-      transition: "background .15s", opacity: offline ? 0.5 : 1,
+      transition: "background .15s",
     }}>
-      <div style={{ position: "relative", flexShrink: 0 }}>
-        <div style={{
-          width: 38, height: 38, borderRadius: "50%", background: friend.bg,
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
-        }}>{friend.emoji}</div>
-        {!offline && (
-          <div style={{
-            position: "absolute", bottom: 0, right: 0,
-            width: 11, height: 11, borderRadius: "50%",
-            background: "#22c55e", border: "2px solid #fafafa",
-          }} />
-        )}
-      </div>
+      <div style={{
+        width: 38, height: 38, borderRadius: "50%", background: friend.bg, flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
+      }}>{friend.emoji}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ color: INK, fontWeight: 700, fontSize: 13 }}>{friend.name}</div>
         <div style={{ color: "#bbb", fontSize: 11 }}>{friend.mood}</div>

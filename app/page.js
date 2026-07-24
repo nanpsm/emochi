@@ -11,7 +11,7 @@ export default function LoginPage() {
         .login-ms-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0,0,0,.12); }
         .login-ms-btn { transition: transform .18s, box-shadow .18s; }
         @media (min-width: 720px) {
-          .login-gif-panel { display: block !important; }
+          .login-gif-panel { display: flex !important; }
         }
       `}</style>
 
@@ -24,7 +24,7 @@ export default function LoginPage() {
         padding: 24,
       }}>
         <div style={{
-          width: "80vw", height: "80vh",
+          width: "90vw", height: "90vh",
           background: "#fff",
           borderRadius: 32,
           boxShadow: "0 24px 60px rgba(26,26,46,.14)",
@@ -33,17 +33,19 @@ export default function LoginPage() {
         }}>
           {/* Left: looped gif */}
           <div className="login-gif-panel" style={{
-            flex: "1 1 45%",
+            flex: "1 1 70%",
             position: "relative",
             display: "none",
             minWidth: 0,
+            alignItems: "center",
+            justifyContent: "center",
           }}>
             <img
               src="/gif/dozy-yarn.gif"
               alt=""
               style={{
-                width: "100%", height: "100%",
-                objectFit: "cover",
+                width: "50%", height: "50%",
+                objectFit: "contain",
                 display: "block",
               }}
             />
@@ -51,7 +53,7 @@ export default function LoginPage() {
 
           {/* Right: login section */}
           <div style={{
-            flex: "1 1 55%",
+            flex: "1 1 30%",
             display: "flex", flexDirection: "column",
             alignItems: "flex-start", justifyContent: "center",
             padding: "56px",

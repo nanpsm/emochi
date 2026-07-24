@@ -23,6 +23,8 @@ export default function DebatePage() {
   const [topicSummary, setTopicSummary] = useState("");
   const [responses, setResponses] = useState(null);
   const [activeSpeaker, setActiveSpeaker] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [debateHistory, setDebateHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const timers = useRef([]);
@@ -72,6 +74,15 @@ export default function DebatePage() {
       if (!response.ok) throw new Error(data.error || "The debate could not begin.");
 
       setTopicSummary(data.summary || nextTopic);
+      setDebateHistory((currentHistory) => [
+        ...currentHistory,
+        {
+          id: `${Date.now()}-${currentHistory.length}`,
+          prompt: nextTopic,
+          summary: data.summary || nextTopic,
+          responses: data.responses,
+        },
+      ]);
       playDebate(data.responses);
       setTopic("");
     } catch (requestError) {
@@ -139,6 +150,65 @@ export default function DebatePage() {
             <p>{responses[speaker.id]}</p>
           </aside>
         )}
+
+        <button
+          type="button"
+          className={`history-toggle ${historyOpen ? "is-open" : ""}`}
+          onClick={() => setHistoryOpen((open) => !open)}
+          aria-label={historyOpen ? "Close chat history" : "Open chat history"}
+          aria-expanded={historyOpen}
+          aria-controls="debate-history"
+          title={historyOpen ? "Close chat history" : "Chat history"}
+        >
+          <span className="material-symbols-outlined" aria-hidden="true">
+            {historyOpen ? "more_down" : "history"}
+          </span>
+        </button>
+
+        <aside
+          id="debate-history"
+          className={`history-panel ${historyOpen ? "is-open" : ""}`}
+          aria-hidden={!historyOpen}
+        >
+          <header>
+            <div>
+              <span className="material-symbols-outlined" aria-hidden="true">forum</span>
+              <h2>Chat history</h2>
+            </div>
+            {debateHistory.length > 0 && (
+              <span>{debateHistory.length} {debateHistory.length === 1 ? "topic" : "topics"}</span>
+            )}
+          </header>
+
+          <div className="history-list">
+            {debateHistory.length === 0 ? (
+              <div className="history-empty">
+                <span className="material-symbols-outlined" aria-hidden="true">chat_bubble</span>
+                <p>Your debates will appear here.</p>
+              </div>
+            ) : (
+              [...debateHistory].reverse().map((entry) => (
+                <section className="history-entry" key={entry.id}>
+                  <div className="history-prompt">
+                    <span>You</span>
+                    <p>{entry.prompt}</p>
+                  </div>
+                  <div className="history-summary">{entry.summary}</div>
+                  {SPEAKING_ORDER.map((id) => {
+                    const character = CHARACTERS.find((item) => item.id === id);
+                    if (!entry.responses?.[id] || !character) return null;
+                    return (
+                      <div className="history-reply" key={id}>
+                        <strong style={{ color: character.color }}>{character.name}</strong>
+                        <p>{entry.responses[id]}</p>
+                      </div>
+                    );
+                  })}
+                </section>
+              ))
+            )}
+          </div>
+        </aside>
 
         <form className="topic-form" onSubmit={startDebate}>
           <div>
@@ -250,6 +320,129 @@ export default function DebatePage() {
           letter-spacing: .3px;
         }
         .speech-bubble p { font-size: 16px; font-weight: 600; line-height: 1.35; }
+        .history-toggle {
+          position: absolute;
+          z-index: 31;
+          left: calc(50% + 340px);
+          bottom: 24px;
+          width: 63px;
+          height: 63px;
+          padding: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(255, 255, 255, .55);
+          border-radius: 9999px;
+          background: rgba(255, 250, 233, .58);
+          box-shadow: 0 8px 25px rgba(74, 45, 13, .18);
+          backdrop-filter: blur(10px);
+          color: #5b3a21;
+          cursor: pointer;
+          transition: left .22s ease, bottom .22s ease, transform .18s ease, background .18s ease;
+        }
+        .history-toggle:hover { transform: scale(1.1); background: rgba(255, 250, 233, .78); }
+        .history-toggle.is-open {
+          left: calc(100% - 460px);
+          bottom: 24px;
+        }
+        .history-toggle .material-symbols-outlined { font-size: 28px; }
+        .history-panel {
+          position: absolute;
+          z-index: 30;
+          top: 18px;
+          right: 18px;
+          width: 450px;
+          bottom: 16px;
+          padding: 20px;
+          display: flex;
+          flex-direction: column;
+          border: 1px solid rgba(255, 255, 255, .55);
+          border-radius: 28px;
+          background: rgba(255, 250, 233, .80);
+          box-shadow: 0 12px 34px rgba(74, 45, 13, .2);
+          backdrop-filter: blur(30px);
+          -webkit-backdrop-filter: blur(30px);
+          opacity: 0;
+          pointer-events: none;
+          transform: translateX(35px) scale(.96);
+          transform-origin: top right;
+          transition: opacity .22s ease, transform .22s ease;
+        }
+        .history-panel.is-open {
+          opacity: 1;
+          pointer-events: auto;
+          transform: none;
+        }
+        .history-panel header {
+          min-height: 48px;
+          padding-right: 58px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 1px solid rgba(91, 58, 33, .12);
+          color: #5b3a21;
+        }
+        .history-panel header > div { display: flex; align-items: center; gap: 8px; }
+        .history-panel h2 { margin: 0; font-size: 18px; line-height: 1; }
+        .history-panel header > span { font-size: 11px; font-weight: 700; opacity: .65; }
+        .history-list {
+          flex: 1;
+          min-height: 0;
+          margin-top: 13px;
+          padding: 0 5px 76px 0;
+          overflow-y: auto;
+          scrollbar-color: rgba(91, 58, 33, .3) transparent;
+          scrollbar-width: thin;
+        }
+        .history-empty {
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          color: rgba(91, 58, 33, .6);
+          text-align: center;
+        }
+        .history-empty .material-symbols-outlined { font-size: 34px; }
+        .history-empty p { margin: 6px 0; font-size: 14px; font-weight: 650; }
+        .history-entry {
+          padding: 0 0 16px;
+          margin-bottom: 16px;
+          border-bottom: 1px solid rgba(91, 58, 33, .12);
+        }
+        .history-entry:last-child { margin-bottom: 0; border-bottom: 0; }
+        .history-prompt {
+          margin-left: 35px;
+          padding: 10px 13px;
+          border-radius: 18px 18px 5px 18px;
+          background: rgba(91, 58, 33, .82);
+          color: #fff9e9;
+        }
+        .history-prompt span {
+          display: block;
+          margin-bottom: 2px;
+          font-size: 10px;
+          font-weight: 800;
+          text-transform: uppercase;
+          opacity: .7;
+        }
+        .history-prompt p, .history-reply p { margin: 0; font-size: 13px; line-height: 1.38; }
+        .history-summary {
+          margin: 9px 3px 7px;
+          color: rgba(91, 58, 33, .62);
+          font-size: 11px;
+          font-weight: 800;
+          text-align: center;
+        }
+        .history-reply {
+          margin: 6px 24px 0 0;
+          padding: 9px 12px;
+          border: 1px solid rgba(255, 255, 255, .4);
+          border-radius: 5px 16px 16px 16px;
+          background: rgba(255, 255, 255, .36);
+          color: #4a3827;
+        }
+        .history-reply strong { display: block; margin-bottom: 1px; font-size: 11px; }
         .topic-form {
           position: absolute;
           z-index: 20;
@@ -297,7 +490,7 @@ export default function DebatePage() {
           cursor: pointer;
           transition: transform .18s ease, opacity .18s ease;
         }
-        .topic-form button:hover:not(:disabled) { transform: scale(1.5); }
+        .topic-form button:hover:not(:disabled) { transform: scale(1.2); }
         .topic-form button .material-symbols-outlined { font-size: 23px; font-weight: 700; }
         .topic-form button:disabled { cursor: default; opacity: .58; }
         .form-error { margin: 7px 3px 0; color: #9e2f25; font-size: 12px; font-weight: 700; }

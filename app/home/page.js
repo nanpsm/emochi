@@ -227,6 +227,7 @@ export default function MainPage() {
   const [historyDate, setHistoryDate] = useState(getCheckinDate);
   const [historyScores, setHistoryScores] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [musicPlaying, setMusicPlaying] = useState(false);
   const [hovChar, setHovChar]       = useState(null);
   const [charPopup, setCharPopup]   = useState(null);
   const [profileOpen, setProfile]   = useState(false);
@@ -294,6 +295,15 @@ export default function MainPage() {
       .then(r => r.json())
       .then(data => { if (Array.isArray(data)) setFriendRequests(data); })
       .catch(() => {});
+  }, []);
+
+  // Sync music state from layout's MusicPlayer
+  useEffect(() => {
+    const onState = (e) => setMusicPlaying(e.detail.playing);
+    window.addEventListener("emochi:music-state", onState);
+    // Query current state on mount
+    window.dispatchEvent(new Event("emochi:music-query"));
+    return () => window.removeEventListener("emochi:music-state", onState);
   }, []);
 
   // Auto-cycle cloud tab and Wisey tip every 4 seconds
@@ -642,6 +652,34 @@ export default function MainPage() {
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {/* Music toggle */}
+              <button
+                onClick={() => window.dispatchEvent(new Event("emochi:music-toggle"))}
+                title={musicPlaying ? "Turn off music" : "Turn on music"}
+                style={{
+                  width: 42, height: 42, borderRadius: "50%", border: "1px solid #e8e8e8",
+                  background: musicPlaying ? "#C9A857" : "rgba(255,255,255,.7)",
+                  backdropFilter: "blur(8px)", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  boxShadow: musicPlaying ? "0 2px 12px rgba(201,168,87,.4)" : "none",
+                  transition: "background .2s, box-shadow .2s", flexShrink: 0,
+                }}
+              >
+                {musicPlaying ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M3 9v6h4l5 5V4L7 9H3z" fill="#fff" />
+                    <path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z" fill="#fff" />
+                    <path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" fill="#fff" />
+                  </svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M3 9v6h4l5 5V4L7 9H3z" fill="#C9A857" />
+                    <line x1="17" y1="9" x2="23" y2="15" stroke="#C9A857" strokeWidth="2.2" strokeLinecap="round" />
+                    <line x1="23" y1="9" x2="17" y2="15" stroke="#C9A857" strokeWidth="2.2" strokeLinecap="round" />
+                  </svg>
+                )}
+              </button>
+
               <button className="avatar-pill" onClick={openProfile} style={{
                 display: "flex", alignItems: "center", gap: 10,
                 padding: "7px 20px 7px 7px", borderRadius: 50,

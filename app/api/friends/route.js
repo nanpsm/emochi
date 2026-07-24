@@ -17,9 +17,9 @@ export async function GET() {
           u.username,
           e.name AS avatar_emochi
         FROM friendships f
-        JOIN users u ON u.id = CASE WHEN f.user_id_1 = @uid THEN f.user_id_2 ELSE f.user_id_1 END
+        JOIN users u ON u.id = CASE WHEN f.user_id = @uid THEN f.friend_id ELSE f.user_id END
         LEFT JOIN emochi_types e ON e.id = u.avatar_emochi_id
-        WHERE f.user_id_1 = @uid OR f.user_id_2 = @uid
+        WHERE (f.user_id = @uid OR f.friend_id = @uid) AND f.status = 'accepted'
         ORDER BY u.display_name
       `);
 

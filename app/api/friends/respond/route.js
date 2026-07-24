@@ -39,7 +39,10 @@ export async function POST(req) {
         await pool.request()
           .input("a", sql.UniqueIdentifier, fromId)
           .input("b", sql.UniqueIdentifier, userId)
-          .query(`INSERT INTO friendships (user_id_1, user_id_2) VALUES (@a, @b)`);
+          .query(`
+            INSERT INTO friendships (user_id, friend_id, status)
+            VALUES (@a, @b, 'accepted')
+          `);
         return NextResponse.json({ ok: true });
       } catch (insertErr) {
         const msg = insertErr?.message ?? String(insertErr);

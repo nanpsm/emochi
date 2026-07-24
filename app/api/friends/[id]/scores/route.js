@@ -17,7 +17,7 @@ export async function GET(req, { params }) {
     .input("b", sql.UniqueIdentifier, friendId)
     .query(`
       SELECT 1 FROM friendships
-      WHERE (user_id_1 = @a AND user_id_2 = @b) OR (user_id_1 = @b AND user_id_2 = @a)
+      WHERE (user_id = @a AND friend_id = @b) OR (user_id = @b AND friend_id = @a)
     `);
   if (check.recordset.length === 0) return NextResponse.json({ error: "Not friends" }, { status: 403 });
 

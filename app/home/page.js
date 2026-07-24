@@ -348,17 +348,23 @@ export default function MainPage() {
   async function sendFriendRequest(toUserId) {
     setSendingReq(prev => ({ ...prev, [toUserId]: "loading" }));
     try {
-      await fetch("/api/friends/request", {
+      const res = await fetch("/api/friends/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ toUserId }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error("Friend request failed:", res.status, err);
+        setSendingReq(prev => ({ ...prev, [toUserId]: null }));
+        return;
+      }
       setSendingReq(prev => ({ ...prev, [toUserId]: "sent" }));
-      // Refresh search results to reflect new status
       setSearchResults(prev => prev.map(u =>
         u.id === toUserId ? { ...u, friend_status: "pending_sent" } : u
       ));
-    } catch {
+    } catch (e) {
+      console.error("Friend request error:", e);
       setSendingReq(prev => ({ ...prev, [toUserId]: null }));
     }
   }

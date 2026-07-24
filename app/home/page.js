@@ -517,7 +517,7 @@ export default function MainPage() {
                   position: "relative", overflow: "hidden", flexShrink: 0,
                   boxShadow: `0 4px 16px ${wiseyChar.color}55`,
                 }}>
-                  <Image src={`/idle/${wiseyChar.file}`} alt="Wisey" fill style={{ objectFit: "cover" }} />
+                  <Image src={`/idle/${wiseyChar.file.toLowerCase()}`} alt="Wisey" fill style={{ objectFit: "cover" }} />
                 </div>
                 {/* Message bubble */}
                 <div style={{
@@ -605,7 +605,7 @@ export default function MainPage() {
                 filter: `drop-shadow(0 16px 40px ${charPopup.char.color}88)`,
                 animation: "cloudPop .25s ease",
               }}>
-                <Image src={`/idle/${charPopup.char.file}`} alt={charPopup.char.name} fill style={{ objectFit: "contain" }} />
+                <Image src={`/idle/${charPopup.char.file.toLowerCase()}`} alt={charPopup.char.name} fill style={{ objectFit: "contain" }} />
               </div>
 
               {/* CSS conversation cloud — auto-sizes to text, no PNG */}
@@ -955,7 +955,7 @@ export default function MainPage() {
                         </div>
                         {/* Image — fills flex space */}
                         <div style={{ position: "relative", width: "100%", flex: 1, minHeight: 0 }}>
-                          <Image src={`/idle/${char.file}`} alt={char.name} fill
+                          <Image src={`/idle/${char.file.toLowerCase()}`} alt={char.name} fill
                             style={{ objectFit: "contain", filter: isFirst ? `drop-shadow(0 4px 12px ${char.color}88)` : "none" }} />
                         </div>
                         {/* Name */}
@@ -1269,7 +1269,7 @@ function CharNode({ char, hovered, onEnter, onLeave, onClick }) {
         }} />
       </div>
       <div ref={imgRef} style={{ position: "relative", width: w, height: char.imgH }}>
-        <Image src={`/idle/${char.file}`} alt={char.name} fill
+        <Image src={`/idle/${char.file.toLowerCase()}`} alt={char.name} fill
           style={{
             objectFit: "contain",
             filter: `drop-shadow(0 ${char.isMain ? 18 : 10}px ${char.isMain ? 28 : 14}px rgba(0,0,0,.14))`,

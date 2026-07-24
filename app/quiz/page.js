@@ -260,43 +260,55 @@ function QuizResults({ result, onRetake }) {
           <p className="text-left text-sm font-bold uppercase tracking-wide text-zinc-400">
             Your Emochi Squad
           </p>
-          <div className="mt-3 space-y-2">
-            {leaderboard.map(({ role, score, name, color, tint }) => (
-              <div
-                key={role}
-                className="flex items-center gap-3 rounded-2xl bg-white p-2.5 pr-4 text-left shadow-sm"
-              >
-                <div
-                  className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full"
-                  style={{ backgroundColor: tint }}
-                >
-                  {score === topScore && (
-                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-lg">👑</span>
-                  )}
-                  <Image
-                    src={`/agents/${name}.png`}
-                    alt={name}
-                    width={44}
-                    height={44}
-                    className="mix-blend-multiply"
-                  />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-sm font-bold text-zinc-700">{name}</p>
-                    <p className="text-sm font-extrabold" style={{ color }}>
+          <div className="mt-3 rounded-[2rem] bg-white p-5 pb-4 shadow-sm">
+            <div className="flex items-end justify-between gap-1.5 sm:gap-3">
+              {leaderboard.map(({ role, score, color }) => (
+                <div key={role} className="flex flex-1 flex-col items-center">
+                  <div className="relative w-full" style={{ height: 160 }}>
+                    <span
+                      className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-extrabold"
+                      style={{ bottom: `calc(${score}% + 6px)`, color }}
+                    >
+                      {score === topScore ? "👑 " : ""}
                       {score}
-                    </p>
-                  </div>
-                  <div className="mt-1 h-2.5 w-full overflow-hidden rounded-full bg-zinc-100">
+                    </span>
                     <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{ width: `${score}%`, backgroundColor: color }}
+                      className="absolute bottom-0 mx-auto w-7 rounded-t-lg transition-all duration-500 sm:w-9"
+                      style={{
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        height: `${score}%`,
+                        backgroundColor: color,
+                      }}
                     />
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+
+            <div className="h-px w-full bg-zinc-100" />
+
+            <div className="mt-3 flex justify-between gap-1.5 sm:gap-3">
+              {leaderboard.map(({ role, name, tint }) => (
+                <div key={role} className="flex flex-1 flex-col items-center gap-1">
+                  <div
+                    className="flex h-9 w-9 items-center justify-center rounded-full sm:h-10 sm:w-10"
+                    style={{ backgroundColor: tint }}
+                  >
+                    <Image
+                      src={`/agents/${name}.png`}
+                      alt={name}
+                      width={30}
+                      height={30}
+                      className="mix-blend-multiply"
+                    />
+                  </div>
+                  <span className="text-[10px] font-bold text-zinc-600 sm:text-[11px]">
+                    {name}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 

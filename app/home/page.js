@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
+import { signOut } from "next-auth/react";
 
 const INK = "#1a1a2e";
 
@@ -76,6 +77,7 @@ export default function MainPage() {
   const [hovChar, setHovChar]       = useState(null);
   const [charPopup, setCharPopup]   = useState(null);
   const [profileOpen, setProfile]   = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [avatar, setAvatar]         = useState("wisey");
   const [userName, setUserName]     = useState("You");
   const [editName, setEditName]     = useState("You");
@@ -95,7 +97,13 @@ export default function MainPage() {
   function openProfile() {
     setEditName(userName);
     setEditAvatar(avatar);
+    setConfirmDelete(false);
     setProfile(true);
+  }
+
+  async function deleteAccount() {
+    await fetch("/api/user", { method: "DELETE" });
+    signOut({ callbackUrl: "/" });
   }
 
   function saveProfile() {
@@ -123,6 +131,8 @@ export default function MainPage() {
         @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
         @keyframes slideUp { from{transform:translateY(24px) scale(.97);opacity:0} to{transform:none;opacity:1} }
         .friends-panel { transition: transform .28s cubic-bezier(.4,0,.2,1), opacity .28s; }
+        .btn-logout { transition: transform .2s, box-shadow .2s; }
+        .btn-logout:hover { transform: translateY(-6px); box-shadow: 0 16px 32px rgba(240,90,58,.45) !important; }
       `}</style>
 
       <div style={{
@@ -356,6 +366,27 @@ export default function MainPage() {
             </div>
           )}
 
+          {/* ══ LOGOUT BUTTON ══ */}
+          <button
+            onClick={() => signOut({ callbackUrl: "/" })}
+            className="btn-logout"
+            style={{
+              position: "absolute", bottom: 28, right: 28, zIndex: 25,
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "13px 26px", borderRadius: 30,
+              background: "#f05a3a", border: "none",
+              cursor: "pointer", fontSize: 16, fontWeight: 700, color: "#fff",
+              boxShadow: "0 4px 16px rgba(240,90,58,.4)",
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            Logout
+          </button>
+
           {/* ══ PROFILE MODAL ══ */}
           {profileOpen && (
             <div className="modal-overlay" onClick={() => setProfile(false)} style={{
@@ -426,6 +457,44 @@ export default function MainPage() {
                     background: "linear-gradient(90deg,#ff8a3d,#ff5e7a)",
                     border: "none", cursor: "pointer", color: "#fff", fontWeight: 800, fontSize: 14,
                   }}>Save Changes</button>
+                </div>
+                <div style={{ marginTop: 16, borderTop: "1px solid #f5f5f5", paddingTop: 16 }}>
+                  {!confirmDelete ? (
+                    <button onClick={() => setConfirmDelete(true)} style={{
+                      width: "100%", padding: "11px 0", borderRadius: 30,
+                      background: "none", border: "1.5px solid #fca5a5",
+                      cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#ef4444",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                    }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6M14 11v6" />
+                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                      </svg>
+                      Delete Account
+                    </button>
+                  ) : (
+                    <div style={{
+                      background: "#fff5f5", border: "1.5px solid #fca5a5",
+                      borderRadius: 16, padding: "14px 16px",
+                    }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#ef4444", marginBottom: 4 }}>Are you sure?</div>
+                      <div style={{ fontSize: 12, color: "#999", marginBottom: 12 }}>This will permanently delete your account and all your data.</div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={() => setConfirmDelete(false)} style={{
+                          flex: 1, padding: "9px 0", borderRadius: 30,
+                          background: "#f5f5f5", border: "1px solid #e8e8e8",
+                          cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#777",
+                        }}>Cancel</button>
+                        <button onClick={deleteAccount} style={{
+                          flex: 1, padding: "9px 0", borderRadius: 30,
+                          background: "#ef4444", border: "none",
+                          cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#fff",
+                        }}>Yes, delete</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

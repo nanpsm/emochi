@@ -106,7 +106,7 @@ export default function LoginPage() {
           </h1>
 
           <button
-            onClick={() => signIn("microsoft-entra-id")}
+            onClick={() => signIn("microsoft-entra-id", { callbackUrl: "/auth/redirect" })}
             className="login-ms-btn"
             style={{
               width: "100%",

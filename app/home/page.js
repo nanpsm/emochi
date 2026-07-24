@@ -765,14 +765,40 @@ export default function MainPage() {
                       flexDirection: "column",
                       gap: 10,
                     }}>
-                      {/* Agent name */}
-                      <div style={{
-                        color: charPopup.char.color,
-                        fontSize: 22,
-                        fontWeight: 900,
-                        lineHeight: 1.1,
-                      }}>
-                        {charPopup.char.name}
+                      {/* Agent name + level/score */}
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{
+                          color: charPopup.char.color,
+                          fontSize: 22,
+                          fontWeight: 900,
+                          lineHeight: 1.1,
+                        }}>
+                          {charPopup.char.name}
+                        </div>
+                        {!charPopup.char.noLevel && (
+                          <div style={{
+                            display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0,
+                          }}>
+                            <div style={{
+                              fontSize: 13, fontWeight: 800, color: charPopup.char.color,
+                              background: charPopup.char.color + "18", borderRadius: 20,
+                              padding: "3px 10px", border: `1px solid ${charPopup.char.color}40`,
+                            }}>
+                              Lv.{charPopup.char.level}
+                            </div>
+                            {charPopup.char.score != null && (
+                              <div style={{
+                                fontSize: 12, fontWeight: 700,
+                                color: charPopup.char.score > charPopup.char.level ? "#22c55e"
+                                     : charPopup.char.score < charPopup.char.level ? "#ef4444" : "#aaa",
+                              }}>
+                                {charPopup.char.score > charPopup.char.level ? `▲ ${charPopup.char.score} pts`
+                                 : charPopup.char.score < charPopup.char.level ? `▼ ${charPopup.char.score} pts`
+                                 : `${charPopup.char.score} pts`}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Role pill */}
@@ -1402,28 +1428,25 @@ function CharNode({ char, hovered, onEnter, onLeave, onClick }) {
           }}
           priority={char.isMain}
         />
+        {!char.noLevel && (
+          <div style={{
+            position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)",
+            display: "flex", alignItems: "center", gap: 5,
+            background: "rgba(255,255,255,0.92)", borderRadius: 20,
+            padding: "3px 10px", backdropFilter: "blur(6px)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.12)", whiteSpace: "nowrap",
+          }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: char.color }}>Lv.{char.level}</span>
+            {char.score != null && char.score !== char.level ? (
+              <span style={{ fontSize: 11, fontWeight: 700, color: char.score > char.level ? "#22c55e" : "#ef4444" }}>
+                {char.score > char.level ? `▲${char.score}` : `▼${char.score}`}
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#aaa" }}>{char.score ?? char.level} pts</span>
+            )}
+          </div>
+        )}
       </div>
-      {!char.noLevel && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 6, marginTop: 6,
-          background: "rgba(255,255,255,0.88)", borderRadius: 20,
-          padding: "4px 12px", backdropFilter: "blur(6px)",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
-        }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: char.color }}>Lv.{char.level}</span>
-          {char.score != null && char.score !== char.level && (
-            <span style={{
-              fontSize: 11, fontWeight: 700,
-              color: char.score > char.level ? "#22c55e" : "#ef4444",
-            }}>
-              {char.score > char.level ? `▲ ${char.score}` : `▼ ${char.score}`}
-            </span>
-          )}
-          {(char.score == null || char.score === char.level) && (
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#999" }}>{char.score ?? char.level} pts</span>
-          )}
-        </div>
-      )}
     </div>
   );
 }

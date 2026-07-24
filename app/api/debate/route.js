@@ -1,69 +1,247 @@
-import { NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { getFoundryProject } from "@/lib/foundry";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
-const SYSTEM_PROMPT = `You are facilitating a debate between 8 emotional characters called Emochis. Each character has a distinct personality and will respond to any topic from their unique emotional lens. Keep every response to 1-2 short sentences, staying firmly in character.
+const JUDGE = "Wisey";
+const MAX_SPEECHES = 8; // hard cap on emotion turns before Wisey's verdict
 
-Characters:
-- Cheer: Enthusiastic, optimistic, always finds the bright side. Uses upbeat language.
-- Fear: Anxious, cautious, always sees risks and worst-case scenarios. Tends to worry.
-- Buzzy: Energetic, excitable, easily distracted, buzzes with ideas and tangents.
-- Bubble: Dreamy, imaginative, lives in their own world, speaks in whimsical metaphors.
-- Dozy: Lazy, sleepy, unenthusiastic, always looking for the easy way out or a nap.
-- Zen: Calm, philosophical, speaks in measured wisdom, finds balance in everything.
-- Tear: Empathetic, melancholic, feels deeply, often moved to sadness or compassion.
-- Wisey: The wise moderator, balanced and insightful, offers the big-picture conclusion.
+const clean = (text) => (text ?? "").replace(/【[^】]*】/g, "").trim();
 
-Respond with a JSON object (no markdown, no code fences) with this exact structure:
-{
-  "summary": "A neutral, concise summary of the user's topic in no more than 12 words.",
-  "cheer": "...",
-  "fear": "...",
-  "buzzy": "...",
-  "bubble": "...",
-  "dozy": "...",
-  "zen": "...",
-  "tear": "...",
-  "wisey": "..."
-}`;
+async function askAgent(openai, agentName, message) {
+  const r = await openai.responses.create(
+    {},
+    {
+      body: {
+        input: message,
+        agent_reference: { name: agentName, type: "agent_reference" },
+      },
+    }
+  );
+  return clean(r.output_text);
+}
+
+// The director is a plain model call (no persona) so it reliably returns JSON.
+let cachedDirectorModel = null;
+async function getDirectorModel(project) {
+  if (cachedDirectorModel) return cachedDirectorModel;
+  for await (const d of project.deployments.list()) {
+    const name = d.name ?? d.modelName ?? "";
+    if (name && !/embed|whisper|tts|dall-e/i.test(name)) {
+      cachedDirectorModel = d.name;
+      return cachedDirectorModel;
+    }
+  }
+  return null;
+}
+
+async function askDirector(openai, model, prompt) {
+  const r = await openai.responses.create({ model, input: prompt });
+  const m = clean(r.output_text).match(/\{[\s\S]*?\}/);
+  if (!m) return null;
+  try {
+    return JSON.parse(m[0]);
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(req) {
+  let payload;
   try {
-    const { topic } = await req.json();
-
-    if (!topic || typeof topic !== "string" || topic.trim().length === 0) {
-      return NextResponse.json({ error: "Topic is required" }, { status: 400 });
-    }
-
-    const stream = await client.messages.stream({
-      model: "claude-opus-4-8",
-      max_tokens: 1024,
-      thinking: { type: "adaptive" },
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Topic for debate: "${topic.trim()}"`,
-        },
-      ],
-    });
-
-    const message = await stream.finalMessage();
-
-    const textBlock = message.content.find((b) => b.type === "text");
-    if (!textBlock) {
-      return NextResponse.json({ error: "No response from Claude" }, { status: 500 });
-    }
-
-    const { summary, ...responses } = JSON.parse(textBlock.text);
-
-    return NextResponse.json({ summary, responses });
-  } catch (error) {
-    console.error("Debate API error:", error);
-    if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Failed to parse Claude response" }, { status: 500 });
-    }
-    return NextResponse.json({ error: "Failed to generate debate" }, { status: 500 });
+    payload = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+  const { message, history = [] } = payload;
+  if (!message || typeof message !== "string") {
+    return Response.json({ error: "Missing 'message'" }, { status: 400 });
+  }
+
+  let project, openai, agentNames;
+  try {
+    project = getFoundryProject();
+    openai = project.getOpenAIClient();
+    agentNames = [];
+    for await (const a of project.agents.list()) {
+      if (a.state === "enabled") agentNames.push(a.name);
+    }
+  } catch (err) {
+    console.error("Debate setup failed:", err);
+    return Response.json({ error: err.message }, { status: 500 });
+  }
+
+  const emotions = agentNames.filter(
+    (n) => n.toLowerCase() !== JUDGE.toLowerCase()
+  );
+  const judge = agentNames.find(
+    (n) => n.toLowerCase() === JUDGE.toLowerCase()
+  );
+  if (emotions.length === 0) {
+    return Response.json({ error: "No debate agents found" }, { status: 500 });
+  }
+
+  const directorModel = await getDirectorModel(project).catch(() => null);
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const emit = (obj) =>
+        controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+
+      const transcript = history
+        .filter((t) => t?.speaker && t?.text)
+        .map((t) => ({ speaker: t.speaker, text: t.text }));
+      transcript.push({ speaker: "User", text: message });
+      const lines = () =>
+        transcript
+          .slice(-30)
+          .map((t) => `${t.speaker}: ${t.text}`)
+          .join("\n");
+
+      try {
+        // ── 1. Director picks who's in the room and who opens ──
+        let participants = emotions;
+        let current = emotions[0];
+        if (directorModel) {
+          const plan = await askDirector(
+            openai,
+            directorModel,
+            `You are directing an Inside Out-style debate between a user's emotion characters.\n` +
+              `Conversation so far:\n${lines()}\n\n` +
+              `Available characters and their emotions: ${emotions.join(", ")} ` +
+              `(Cheer=joy/optimism, Fear=caution, Buzzy=urgency/stress, Tear=sadness/empathy, ` +
+              `Zen=calm, Bubble=social connection, Dozy=rest/recovery).\n` +
+              `Pick the 3-5 characters whose perspectives are MOST relevant to the user's message, ` +
+              `favoring characters likely to DISAGREE with each other, and choose who speaks first.\n` +
+              `Respond with ONLY this JSON, nothing else: {"participants": ["Name", ...], "first": "Name"}`
+          ).catch(() => null);
+          if (Array.isArray(plan?.participants)) {
+            const chosen = plan.participants.filter((n) => emotions.includes(n));
+            if (chosen.length >= 2) participants = chosen;
+          }
+          if (participants.includes(plan?.first)) current = plan.first;
+          else current = participants[0];
+        }
+        emit({ type: "cast", participants, judge: judge ?? null });
+
+        // ── 2. Debate loop: speak, then director picks next or stops ──
+        let speeches = 0;
+        const speechCounts = Object.fromEntries(participants.map((n) => [n, 0]));
+        const speakerHistory = []; // order of actual emotion speakers, for ping-pong detection
+
+        // Only 2 unique speakers should never carry more than 3 exchanges in a
+        // row — if that happens (director keeps ping-ponging), force in a
+        // fresh voice so quieter cast members aren't frozen out forever.
+        function dePingPong(candidate) {
+          if (!candidate || participants.length <= 2) return candidate;
+          const recent = [...speakerHistory.slice(-3), candidate];
+          const uniq = new Set(recent);
+          if (uniq.size > 2) return candidate;
+          const notYetSpoken = participants.filter((n) => speechCounts[n] === 0);
+          const fresh =
+            notYetSpoken.find((n) => !uniq.has(n)) ??
+            participants.find((n) => !uniq.has(n));
+          return fresh ?? candidate;
+        }
+
+        while (current && speeches < MAX_SPEECHES) {
+          emit({ type: "turn_start", agent: current });
+          // Only mention Moodlings who have ACTUALLY spoken already — telling
+          // a speaker the full cast roster up front makes them address
+          // characters who haven't said anything yet.
+          const spokenSoFar = speakerHistory.filter((n) => n !== current);
+          const reactionNote =
+            spokenSoFar.length > 0
+              ? `React directly to what ${[...new Set(spokenSoFar)].join(" and ")} already said in the ` +
+                `transcript above — call them out BY NAME when you disagree, or back them up if you agree. ` +
+                `Only reference Moodlings who have actually spoken already; do not address anyone who hasn't spoken yet.`
+              : `You are the first to speak — take a clear stance without addressing anyone by name yet.`;
+          const text = await askAgent(
+            openai,
+            current,
+            `You are ${current} in the Moodling council debate about the user's situation. ` +
+              `The debate so far:\n${lines()}\n\n` +
+              `Speak as ${current}, fully in character, in 1-2 punchy sentences. Take a clear stance ` +
+              `from your emotion's point of view. ${reactionNote} Never repeat a point already made. ` +
+              `Do not prefix your reply with your name.`
+          );
+          transcript.push({ speaker: current, text });
+          speakerHistory.push(current);
+          speechCounts[current]++;
+          emit({ type: "turn", agent: current, text });
+          speeches++;
+
+          if (speeches >= MAX_SPEECHES || !directorModel) {
+            // No director: simple fixed order, one speech each.
+            if (!directorModel) {
+              const idx = participants.indexOf(current);
+              current = participants[idx + 1] ?? null;
+              continue;
+            }
+            break;
+          }
+
+          const notYetSpoken = participants.filter((n) => speechCounts[n] === 0);
+          const countsLine = participants
+            .map((n) => `${n}: ${speechCounts[n]}`)
+            .join(", ");
+          const decision = await askDirector(
+            openai,
+            directorModel,
+            `You are directing a debate between: ${participants.join(", ")}.\n` +
+              `Debate so far:\n${lines()}\n\n` +
+              `Turns spoken so far — ${countsLine}.\n` +
+              (notYetSpoken.length > 0
+                ? `These haven't spoken yet and should be prioritized for variety: ${notYetSpoken.join(", ")}.\n`
+                : "") +
+              `Decide who should respond NEXT to keep the debate lively — prefer someone who would ` +
+              `push back on the last speaker, and never pick the same character twice in a row ` +
+              `(a character MAY speak again later to rebut). Avoid letting only two characters ` +
+              `ping-pong back and forth for the whole debate — bring in a fresh voice if the same ` +
+              `pair keeps trading turns. If every useful point has been made or the debate is ` +
+              `repeating itself, stop it.\n` +
+              `Respond with ONLY this JSON, nothing else: {"next": "Name"} or {"next": "STOP"}`
+          ).catch(() => null);
+
+          const next = decision?.next;
+          if (!next || next === "STOP" || next === current || !participants.includes(next)) {
+            current = null;
+          } else {
+            current = dePingPong(next);
+          }
+        }
+
+        // ── 3. Wisey always closes with the verdict ──
+        if (judge) {
+          emit({ type: "turn_start", agent: judge });
+          const verdict = await askAgent(
+            openai,
+            judge,
+            `You are ${judge}, the judge and moderator of the Moodling council. ` +
+              `The debate so far:\n${lines()}\n\n` +
+              `Deliver your verdict: in 2-3 sentences, weigh the strongest points made ` +
+              `(mention at least two Moodlings by name), then give the user ONE balanced next step. ` +
+              `Do not prefix your reply with your name.`
+          );
+          transcript.push({ speaker: judge, text: verdict });
+          emit({ type: "turn", agent: judge, text: verdict });
+        }
+
+        emit({ type: "done" });
+      } catch (err) {
+        console.error("Debate stream failed:", err);
+        emit({ type: "error", message: err.message ?? "Debate failed" });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson",
+      "Cache-Control": "no-cache",
+    },
+  });
 }

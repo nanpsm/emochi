@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 
 const CHARACTERS = [
   { id: "bubble", name: "Bubble", file: "bubble.png", left: 18, top: 30, size: 220, color: "#F97316", bubble: { left: 27, top: 18 } },
-  { id: "wisey", name: "Wisey", file: "wisey-judge.png", left: 49.5, top: 32.5, size: 185, color: "#C9A857" },
+  { id: "wisey", name: "Wisey", file: "wisey-judge.png", left: 49.5, top: 32.5, size: 185, color: "#C9A857", bubble: { left: 49.5, top: 15 } },
   { id: "buzzy", name: "Buzzy", file: "buzzy.png", left: 78, top: 30, size: 220, color: "#FF6B4A", bubble: { left: 68, top: 18 } },
   { id: "cheer", name: "Cheer", file: "cheer.png", left: 72, top: 54, size: 210, color: "#FFC53D", bubble: { left: 79, top: 43 } },
   { id: "fear", name: "Fear", file: "fear.png", left: 28, top: 54, size: 200, color: "#A78BFA", bubble: { left: 18, top: 43 } },
@@ -41,6 +41,7 @@ export default function DebatePage() {
   const [verdictOpen, setVerdictOpen] = useState(false);
   const [verdictChat, setVerdictChat] = useState([]);
   const [verdictReply, setVerdictReply] = useState("");
+
 
   useEffect(() => {
     const resize = () => setScale(Math.min(window.innerWidth / 1600, window.innerHeight / 900));
@@ -82,6 +83,7 @@ export default function DebatePage() {
       let buffer = "";
       let summary = nextTopic;
       let streamError = "";
+      let isDirect = false;
 
       for (;;) {
         const { done, value } = await reader.read();
@@ -101,20 +103,22 @@ export default function DebatePage() {
           }
 
           if (streamEvent.type === "cast") {
+            isDirect = Boolean(streamEvent.direct);
             summary = streamEvent.summary || nextTopic;
             setTopicSummary(summary);
           } else if (streamEvent.type === "turn_start") {
             const id = streamEvent.agent?.toLowerCase();
-            if (id && id !== "wisey") {
+            if (id && (id !== "wisey" || isDirect)) {
               setResponses((current) => ({ ...current, [id]: "" }));
             }
-            setActiveSpeaker(id === "wisey" ? null : id);
+            setActiveSpeaker(id === "wisey" && !isDirect ? null : id);
           } else if (streamEvent.type === "turn") {
             const id = streamEvent.agent?.toLowerCase();
             messages.push({ agent: streamEvent.agent, text: streamEvent.text });
-            if (id !== "wisey") {
+            if (id !== "wisey" || isDirect) {
               setResponses((current) => ({ ...current, [id]: streamEvent.text }));
               setActiveSpeaker(id);
+              if (id === "wisey") setWiseyVerdict("");
             } else {
               setActiveSpeaker(null);
               setWiseyVerdict(streamEvent.text);
@@ -442,8 +446,7 @@ export default function DebatePage() {
           align-items: center;
           justify-content: center;
           border-radius: 9999px;
-          background: rgba(255, 250, 233, .9);
-          border: 1px solid rgba(255, 255, 255, .6);
+          background: transparent;
           box-shadow: 0 10px 26px rgba(74, 45, 13, .3);
           animation: hammer-float 2.2s ease-in-out infinite;
         }

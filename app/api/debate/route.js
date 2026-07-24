@@ -35,8 +35,28 @@ async function getDirectorModel(project) {
   return null;
 }
 
+// The agent roster (names + enabled state) rarely changes, so cache it across
+// requests instead of re-listing it from Azure on every debate.
+let cachedAgentNames = null;
+async function getAgentNames(project) {
+  if (cachedAgentNames) return cachedAgentNames;
+  const names = [];
+  for await (const a of project.agents.list()) {
+    if (a.state === "enabled") names.push(a.name);
+  }
+  cachedAgentNames = names;
+  return names;
+}
+
 async function askDirector(openai, model, prompt) {
-  const r = await openai.responses.create({ model, input: prompt });
+  // The director only ever picks a name or writes one short JSON line — no
+  // real reasoning needed, so keep GPT-5-mini's reasoning effort minimal to
+  // cut its latency (it defaults to spending real "thinking" time otherwise).
+  const r = await openai.responses.create({
+    model,
+    input: prompt,
+    reasoning: { effort: "minimal" },
+  });
   const m = clean(r.output_text).match(/\{[\s\S]*?\}/);
   if (!m) return null;
   try {
@@ -62,10 +82,7 @@ export async function POST(req) {
   try {
     project = getFoundryProject();
     openai = project.getOpenAIClient();
-    agentNames = [];
-    for await (const a of project.agents.list()) {
-      if (a.state === "enabled") agentNames.push(a.name);
-    }
+    agentNames = await getAgentNames(project);
   } catch (err) {
     console.error("Debate setup failed:", err);
     return Response.json({ error: err.message }, { status: 500 });

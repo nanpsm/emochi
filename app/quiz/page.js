@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { QUIZ_QUESTIONS, computeQuizResults } from "@/lib/quiz-questions";
@@ -252,6 +252,18 @@ function MochiProgress({ step, total, color }) {
 function QuizResults({ result, onRetake }) {
   const router = useRouter();
   const scores = computeEmochiScores(result);
+
+  useEffect(() => {
+    // Map internal role keys to emochi display names before sending
+    const namedScores = Object.fromEntries(
+      Object.entries(scores).map(([role, score]) => [CHARACTERS[role].name, score])
+    );
+    fetch("/api/quiz-scores", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scores: namedScores, personalityType: result.mbti }),
+    }).catch(() => {});
+  }, []);
   const leaderboard = Object.entries(scores)
     .map(([role, score]) => ({ role, score, ...CHARACTERS[role] }))
     .sort((a, b) => b.score - a.score);

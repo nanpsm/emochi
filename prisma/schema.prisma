@@ -1,0 +1,186 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model EmochiType {
+  id                  Int                 @id @default(autoincrement())
+  name                String              @db.NVarChar(100)
+  avatar              String              @db.NVarChar(500)
+  users               User[]
+  user_emochi_scores  UserEmochiScore[]
+  daily_score_history DailyScoreHistory[]
+  meeting_debates     MeetingDebate[]
+
+  @@map("emochi_types")
+}
+
+model Interest {
+  id             Int            @id @default(autoincrement())
+  name           String         @unique @db.NVarChar(100)
+  user_interests UserInterest[]
+
+  @@map("interests")
+}
+
+model User {
+  id               String   @id @default(uuid()) @db.UniqueIdentifier
+  username         String   @unique @db.NVarChar(100)
+  email            String   @unique @db.NVarChar(255)
+  display_name     String?  @db.NVarChar(100)
+  avatar_emochi_id Int?
+  personality_type String?  @db.NVarChar(10)
+  created_at       DateTime @default(now()) @db.DateTimeOffset
+  updated_at       DateTime @default(now()) @db.DateTimeOffset
+
+  avatar                EmochiType?         @relation(fields: [avatar_emochi_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_interests        UserInterest[]
+  friendships_as_user   Friendship[]        @relation("FriendshipUser")
+  friendships_as_friend Friendship[]        @relation("FriendshipFriend")
+  emochi_scores         UserEmochiScore[]
+  daily_score_history   DailyScoreHistory[]
+  daily_checkin         DailyCheckIn?
+  memories              Memory[]
+  meetings              Meeting[]
+  outcome_logs          OutcomeLog[]
+
+  @@map("users")
+}
+
+model UserInterest {
+  user_id     String @db.UniqueIdentifier
+  interest_id Int
+
+  user     User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  interest Interest @relation(fields: [interest_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, interest_id])
+  @@map("user_interests")
+}
+
+model Friendship {
+  user_id    String   @db.UniqueIdentifier
+  friend_id  String   @db.UniqueIdentifier
+  status     String   @default("pending") @db.NVarChar(20)
+  created_at DateTime @default(now()) @db.DateTimeOffset
+
+  user   User @relation("FriendshipUser",   fields: [user_id],   references: [id], onDelete: Cascade,  onUpdate: NoAction)
+  friend User @relation("FriendshipFriend", fields: [friend_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([user_id, friend_id])
+  @@map("friendships")
+}
+
+model UserEmochiScore {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  user_id    String   @db.UniqueIdentifier
+  emochi_id  Int
+  score      Int      @default(50)
+  updated_at DateTime @default(now()) @db.DateTimeOffset
+
+  user   User       @relation(fields: [user_id],   references: [id], onDelete: Cascade,  onUpdate: NoAction)
+  emochi EmochiType @relation(fields: [emochi_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([user_id, emochi_id])
+  @@map("user_emochi_scores")
+}
+
+model DailyScoreHistory {
+  id          String   @id @default(uuid()) @db.UniqueIdentifier
+  user_id     String   @db.UniqueIdentifier
+  emochi_id   Int
+  score       Int
+  recorded_at DateTime @default(now()) @db.DateTimeOffset
+
+  user   User       @relation(fields: [user_id],   references: [id], onDelete: NoAction, onUpdate: NoAction)
+  emochi EmochiType @relation(fields: [emochi_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("daily_score_history")
+}
+
+model DailyCheckIn {
+  user_id      String   @id @db.UniqueIdentifier
+  checkin_date DateTime @db.Date
+  sleep_hours  Decimal? @db.Decimal(4, 1)
+  work_hours   Decimal? @db.Decimal(4, 1)
+  mood_score   Int?
+  feelings     String?
+  updated_at   DateTime @default(now()) @db.DateTimeOffset
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("daily_checkin")
+}
+
+model Memory {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  user_id    String   @db.UniqueIdentifier
+  title      String   @db.NVarChar(255)
+  situation  String?
+  outcome    String?
+  created_at DateTime @default(now()) @db.DateTimeOffset
+
+  user          User                @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  meeting_links MeetingMemoryLink[]
+
+  @@map("memories")
+}
+
+model Meeting {
+  id                   String   @id @default(uuid()) @db.UniqueIdentifier
+  user_id              String   @db.UniqueIdentifier
+  prompt               String
+  personality_snapshot String?  @db.NVarChar(10)
+  verdict              String?
+  created_at           DateTime @default(now()) @db.DateTimeOffset
+
+  user         User                @relation(fields: [user_id], references: [id], onDelete: Cascade,  onUpdate: NoAction)
+  debates      MeetingDebate[]
+  memory_links MeetingMemoryLink[]
+  outcome_logs OutcomeLog[]
+
+  @@map("meetings")
+}
+
+model MeetingDebate {
+  id          String @id @default(uuid()) @db.UniqueIdentifier
+  meeting_id  String @db.UniqueIdentifier
+  emochi_id   Int
+  message     String
+  order_index Int
+
+  meeting Meeting    @relation(fields: [meeting_id], references: [id], onDelete: Cascade,  onUpdate: NoAction)
+  emochi  EmochiType @relation(fields: [emochi_id],  references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("meeting_debate")
+}
+
+model MeetingMemoryLink {
+  meeting_id String @db.UniqueIdentifier
+  memory_id  String @db.UniqueIdentifier
+
+  meeting Meeting @relation(fields: [meeting_id], references: [id], onDelete: Cascade,  onUpdate: NoAction)
+  memory  Memory  @relation(fields: [memory_id],  references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([meeting_id, memory_id])
+  @@map("meeting_memory_links")
+}
+
+model OutcomeLog {
+  id         String   @id @default(uuid()) @db.UniqueIdentifier
+  user_id    String   @db.UniqueIdentifier
+  meeting_id String?  @db.UniqueIdentifier
+  situation  String
+  result     String   @db.NVarChar(20)
+  reflection String?
+  created_at DateTime @default(now()) @db.DateTimeOffset
+
+  user    User     @relation(fields: [user_id],    references: [id], onDelete: NoAction, onUpdate: NoAction)
+  meeting Meeting? @relation(fields: [meeting_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("outcome_logs")
+}

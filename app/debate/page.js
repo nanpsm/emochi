@@ -42,7 +42,6 @@ export default function DebatePage() {
   const [verdictChat, setVerdictChat] = useState([]);
   const [verdictReply, setVerdictReply] = useState("");
 
-
   useEffect(() => {
     const resize = () => setScale(Math.min(window.innerWidth / 1600, window.innerHeight / 900));
     resize();
@@ -299,10 +298,19 @@ export default function DebatePage() {
                     if (!message.text) return null;
                     return (
                       <div className="history-reply" key={`${message.agent}-${index}`}>
-                        <strong style={{ color: character?.color || "#806b59" }}>
-                          {character?.name || message.agent}
-                        </strong>
-                        <p>{message.text}</p>
+                        {character && (
+                          <img
+                            src={`/idle/${character.file}`}
+                            alt=""
+                            className="history-avatar"
+                          />
+                        )}
+                        <div className="history-reply-body">
+                          <strong style={{ color: character?.color || "#806b59" }}>
+                            {character?.name || message.agent}
+                          </strong>
+                          <p>{message.text}</p>
+                        </div>
                       </div>
                     );
                   })}
@@ -634,7 +642,7 @@ export default function DebatePage() {
           font-weight: 800;
           letter-spacing: .3px;
         }
-        .speech-bubble p { font-size: 16px; font-weight: 600; line-height: 1.35; }
+        .speech-bubble p { font-size: 19px; font-weight: 600; line-height: 1.35; }
         .bubble-tail {
           position: absolute;
           z-index: -1;
@@ -750,7 +758,7 @@ export default function DebatePage() {
           text-transform: uppercase;
           opacity: .7;
         }
-        .history-prompt p, .history-reply p { margin: 0; font-size: 13px; line-height: 1.38; }
+        .history-prompt p, .history-reply p { margin: 0; font-size: 23px; line-height: 1.38; }
         .history-summary {
           margin: 9px 3px 7px;
           color: rgba(91, 58, 33, .62);
@@ -759,6 +767,9 @@ export default function DebatePage() {
           text-align: center;
         }
         .history-reply {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
           margin: 6px 24px 0 0;
           padding: 9px 12px;
           border: 1px solid rgba(255, 255, 255, .4);
@@ -766,6 +777,14 @@ export default function DebatePage() {
           background: rgba(255, 255, 255, .36);
           color: #4a3827;
         }
+        .history-avatar {
+          flex: 0 0 auto;
+          width: 32px;
+          height: 32px;
+          object-fit: contain;
+          margin-top: 1px;
+        }
+        .history-reply-body { flex: 1; min-width: 0; }
         .history-reply strong { display: block; margin-bottom: 1px; font-size: 11px; font-weight: 800; }
         .topic-form {
           position: absolute;

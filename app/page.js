@@ -13,6 +13,7 @@ const GIFS = [
   "fear-sad.gif",
   "bubble-talking.gif",
   "buzzy-busy.gif",
+  "zen-fly.gif",
 ];
 
 const HOLD_MS = 2600;

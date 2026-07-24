@@ -173,7 +173,7 @@ export default function MainPage() {
                   position: "relative", overflow: "hidden", flexShrink: 0,
                   boxShadow: `0 2px 8px ${currentChar.color}44`,
                 }}>
-                  <Image src={`/agents/${currentChar.file}`} alt={currentChar.name} fill style={{ objectFit: "cover" }} />
+                  <Image src={`/idle/${currentChar.file.toLowerCase()}`} alt={currentChar.name} fill style={{ objectFit: "cover" }} />
                 </div>
                 <div style={{ textAlign: "left" }}>
                   <div style={{ color: INK, fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>{userName}</div>
@@ -303,7 +303,7 @@ export default function MainPage() {
                   display: "flex", alignItems: "flex-end", justifyContent: "center",
                 }}>
                   <div style={{ position: "relative", width: 180, height: 240 }}>
-                    <Image src={`/agents/${charPopup.file}`} alt={charPopup.name} fill style={{ objectFit: "contain" }} />
+                    <Image src={`/idle/${charPopup.file.toLowerCase()}`} alt={charPopup.name} fill style={{ objectFit: "contain" }} />
                   </div>
                 </div>
                 <div style={{ flex: 1, padding: "28px 28px 24px" }}>
@@ -381,7 +381,7 @@ export default function MainPage() {
                     position: "relative", overflow: "hidden", flexShrink: 0,
                     boxShadow: `0 4px 16px ${CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc"}44`,
                   }}>
-                    <Image src={`/agents/${CHARS.find(c => c.id === editAvatar)?.file}`} alt="avatar" fill style={{ objectFit: "cover" }} />
+                    <Image src={`/idle/${CHARS.find(c => c.id === editAvatar)?.file.toLowerCase()}`} alt="avatar" fill style={{ objectFit: "cover" }} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>DISPLAY NAME</div>
@@ -409,7 +409,7 @@ export default function MainPage() {
                         boxShadow: editAvatar === c.id ? `0 0 0 3px ${c.color}44` : "none",
                         transition: "box-shadow .15s, border-color .15s",
                       }}>
-                        <Image src={`/agents/${c.file}`} alt={c.name} fill style={{ objectFit: "contain", padding: 4 }} />
+                        <Image src={`/idle/${c.file.toLowerCase()}`} alt={c.name} fill style={{ objectFit: "contain", padding: 4 }} />
                       </div>
                       <span style={{ fontSize: 11, fontWeight: 700, color: editAvatar === c.id ? c.color : "#aaa" }}>{c.name}</span>
                     </div>
@@ -467,7 +467,7 @@ function CharNode({ char, hovered, onEnter, onLeave, onClick }) {
         }} />
       </div>
       <div style={{ position: "relative", width: w, height: char.imgH }}>
-        <Image src={`/agents/${char.file}`} alt={char.name} fill
+        <Image src={`/idle/${char.file.toLowerCase()}`} alt={char.name} fill
           style={{
             objectFit: "contain",
             filter: `drop-shadow(0 ${char.isMain ? 18 : 10}px ${char.isMain ? 28 : 14}px rgba(0,0,0,.14))`,

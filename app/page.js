@@ -126,7 +126,7 @@ export default function LandingPage() {
                   filter: `drop-shadow(0 12px 20px rgba(0,0,0,.13))`,
                 }}
               >
-                <Image src={`/agents/${c.file}`} alt="" fill style={{ objectFit: "contain" }} />
+                <Image src={`/idle/${c.file.toLowerCase()}`} alt="" fill style={{ objectFit: "contain" }} />
               </div>
             ))}
           </div>

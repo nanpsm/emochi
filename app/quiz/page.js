@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { QUIZ_QUESTIONS, computeQuizResults } from "@/lib/quiz-questions";
 import { CHARACTERS, computeEmochiScores } from "@/lib/emochi-scores";
 
@@ -12,15 +13,17 @@ function scoreToLevel(score) {
   return Math.min(10, Math.floor(score / 10));
 }
 
-const MASCOTS = {
-  "I/E": { name: "Bubble", color: "#F97316", tint: "#FFEDD9" },
-  "S/N": { name: "Wisey", color: "#C9A857", tint: "#FBF3D9" },
-  "T/F": { name: "Tear", color: "#4A90D9", tint: "#DCEBFB" },
-  "J/P": { name: "Zen", color: "#5FD4C4", tint: "#DFF9F4" },
-  sleep: { name: "Dozy", color: "#6C7A96", tint: "#E4E8F2" },
-  stress: { name: "Buzzy", color: "#FF6B4A", tint: "#FFE4DC" },
-  socialTime: { name: "Cheer", color: "#FFC53D", tint: "#FFF3D3" },
-};
+// All 8 Emochi, cycled one-per-question (question 9 restarts the rotation)
+const MASCOT_ROTATION = [
+  { name: "Cheer", color: "#FFC53D", tint: "#FFF3D3" },
+  { name: "Fear", color: "#A78BFA", tint: "#EDE6FE" },
+  { name: "Buzzy", color: "#FF6B4A", tint: "#FFE4DC" },
+  { name: "Tear", color: "#4A90D9", tint: "#DCEBFB" },
+  { name: "Zen", color: "#5FD4C4", tint: "#DFF9F4" },
+  { name: "Bubble", color: "#F97316", tint: "#FFEDD9" },
+  { name: "Dozy", color: "#6C7A96", tint: "#E4E8F2" },
+  { name: "Wisey", color: "#C9A857", tint: "#FBF3D9" },
+];
 
 const CHEER_LINES = [
   "Ooh, love that answer!",
@@ -37,7 +40,7 @@ export default function QuizPage() {
   const [bounceKey, setBounceKey] = useState(0);
 
   const question = QUIZ_QUESTIONS[step];
-  const mascot = MASCOTS[question?.dimension];
+  const mascot = MASCOT_ROTATION[step % MASCOT_ROTATION.length];
   const selectedValue = answers[question?.id];
   const isLastQuestion = step === TOTAL - 1;
 
@@ -77,33 +80,33 @@ export default function QuizPage() {
       className="flex min-h-screen flex-col items-center overflow-hidden px-4 py-8 font-[family-name:var(--font-baloo)] sm:py-12"
       style={{
         background:
-          "radial-gradient(circle at 15% 0%, #FFF3D3 0%, transparent 45%), radial-gradient(circle at 85% 100%, #DCEBFB 0%, transparent 45%), #FFF8EC",
+          "linear-gradient(160deg,#fffdf0 0%,#fff8d6 60%,#fffef5 100%)",
       }}
     >
-      <div className="w-full max-w-lg">
+      <div className="w-full max-w-2xl">
         <MochiProgress step={step} total={TOTAL} color={mascot.color} />
 
         <div
           key={question.id}
-          className="animate-pop-in mt-6 rounded-[2rem] bg-white p-6 shadow-[0_8px_0_0_rgba(0,0,0,0.06)] sm:p-8"
+          className="animate-pop-in mt-6 rounded-[2rem] bg-white p-6 shadow-[0_8px_0_0_rgba(0,0,0,0.06)] sm:p-9"
         >
           <div className="flex flex-col items-center text-center">
             <div
-              className="animate-float-bob relative flex h-28 w-28 items-center justify-center rounded-full"
+              className="animate-float-bob relative flex h-24 w-24 items-center justify-center rounded-full sm:h-28 sm:w-28"
               style={{ background: mascot.tint }}
             >
               <Image
-                src={`/agents/${mascot.name}.png`}
+                src={`/idle/${mascot.name.toLowerCase()}.png`}
                 alt={mascot.name}
-                width={96}
-                height={96}
-                className="mix-blend-multiply"
+                width={84}
+                height={84}
+                className="mix-blend-multiply sm:h-[100px] sm:w-[100px]"
                 priority
               />
             </div>
 
             <span
-              className="mt-3 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide text-white"
+              className="mt-3 rounded-full px-3.5 py-1 text-xs font-bold uppercase tracking-wide text-white sm:text-sm"
               style={{ backgroundColor: mascot.color }}
             >
               {mascot.name} asks
@@ -122,7 +125,7 @@ export default function QuizPage() {
                   key={option.value}
                   type="button"
                   onClick={() => selectOption(option.value)}
-                  className={`group flex w-full items-center gap-3 rounded-2xl border-[3px] px-4 py-4 text-left text-base font-semibold transition-all active:scale-[0.98] ${
+                  className={`group flex w-full items-center gap-3 rounded-2xl border-[3px] px-5 py-4 text-left text-base font-semibold transition-all active:scale-[0.98] ${
                     isSelected
                       ? "scale-[1.02] border-current shadow-md"
                       : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-200 hover:bg-white"
@@ -219,7 +222,7 @@ function EmochiRing({ name, color, tint, score, level, isTop }) {
             style={{ backgroundColor: tint }}
           >
             <Image
-              src={`/agents/${name}.png`}
+              src={`/idle/${name.toLowerCase()}.png`}
               alt={name}
               width={64}
               height={64}
@@ -260,6 +263,7 @@ function MochiProgress({ step, total, color }) {
 }
 
 function QuizResults({ result, onRetake }) {
+  const router = useRouter();
   const scores = computeEmochiScores(result);
   const leaderboard = Object.entries(scores)
     .map(([role, score]) => ({ role, score, ...CHARACTERS[role] }))
@@ -271,7 +275,7 @@ function QuizResults({ result, onRetake }) {
       className="flex min-h-screen w-full flex-col items-center justify-center px-4 py-12 font-[family-name:var(--font-baloo)] sm:py-16"
       style={{
         background:
-          "radial-gradient(circle at 20% 10%, #FFF3D3 0%, transparent 45%), radial-gradient(circle at 80% 90%, #DCEBFB 0%, transparent 45%), #FFF8EC",
+          "linear-gradient(160deg,#fffdf0 0%,#fff8d6 60%,#fffef5 100%)",
       }}
     >
       <div className="animate-pop-in w-full max-w-6xl text-center">
@@ -293,6 +297,15 @@ function QuizResults({ result, onRetake }) {
             ))}
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => router.push("/interests")}
+          className="mt-10 rounded-full px-9 py-4 text-base font-bold text-white shadow-[0_5px_0_0_rgba(0,0,0,0.15)] transition-all hover:-translate-y-0.5"
+          style={{ backgroundColor: "#1a1a2e" }}
+        >
+          Continue →
+        </button>
       </div>
     </div>
   );

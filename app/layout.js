@@ -1,5 +1,6 @@
 import "./globals.css";
 import { Baloo_2, Nunito } from "next/font/google";
+import MusicPlayer from "./components/MusicPlayer";
 
 const baloo = Baloo_2({ subsets: ["latin"], weight: ["500","600","700","800"], variable: "--font-baloo" });
 const nunito = Nunito({ subsets: ["latin"], weight: ["600","700","800"], variable: "--font-nunito" });
@@ -19,7 +20,10 @@ export default function RootLayout({ children }) {
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <MusicPlayer />
+      </body>
     </html>
   );
 }

@@ -182,26 +182,29 @@ export default function QuizPage() {
   );
 }
 
-function EmochiRing({ name, color, tint, level, isTop }) {
+function EmochiRing({ name, color, tint, score, level, isTop }) {
   const radius = 32;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference * (1 - level / 10);
+  // ring fill reflects progress within the level (score's ones digit out of 10),
+  // e.g. score 56 -> level 5, ring shows 6/10 filled
+  const progressWithinLevel = score % 10;
+  const offset = circumference * (1 - progressWithinLevel / 10);
 
   return (
     <div className="flex shrink-0 flex-col items-center">
-      <div className="relative h-20 w-20 sm:h-28 sm:w-28">
+      <div className="relative h-28 w-28 sm:h-40 sm:w-40">
         {isTop && (
-          <span className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 text-base sm:text-xl">
+          <span className="absolute -top-4 left-1/2 z-10 -translate-x-1/2 text-2xl sm:text-3xl">
             👑
           </span>
         )}
         <svg viewBox="0 0 80 80" className="h-full w-full -rotate-90">
-          <circle cx="40" cy="40" r={radius} strokeWidth="8" fill="none" stroke="#F1F1F1" />
+          <circle cx="40" cy="40" r={radius} strokeWidth="7" fill="none" stroke="#F1F1F1" />
           <circle
             cx="40"
             cy="40"
             r={radius}
-            strokeWidth="8"
+            strokeWidth="7"
             fill="none"
             stroke={color}
             strokeLinecap="round"
@@ -212,26 +215,26 @@ function EmochiRing({ name, color, tint, level, isTop }) {
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
           <div
-            className="flex h-11 w-11 items-center justify-center rounded-full sm:h-16 sm:w-16"
+            className="flex h-16 w-16 items-center justify-center rounded-full sm:h-24 sm:w-24"
             style={{ backgroundColor: tint }}
           >
             <Image
               src={`/agents/${name}.png`}
               alt={name}
-              width={44}
-              height={44}
+              width={64}
+              height={64}
               className="mix-blend-multiply"
             />
           </div>
         </div>
         <span
-          className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-extrabold text-white shadow-sm sm:px-2.5 sm:text-xs"
+          className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-extrabold text-white shadow-sm sm:px-3.5 sm:py-1.5 sm:text-base"
           style={{ backgroundColor: color }}
         >
           Lv {level}
         </span>
       </div>
-      <span className="mt-3 text-xs font-bold text-zinc-600 sm:text-sm">{name}</span>
+      <span className="mt-4 text-sm font-bold text-zinc-600 sm:text-lg">{name}</span>
     </div>
   );
 }
@@ -271,32 +274,25 @@ function QuizResults({ result, onRetake }) {
           "radial-gradient(circle at 20% 10%, #FFF3D3 0%, transparent 45%), radial-gradient(circle at 80% 90%, #DCEBFB 0%, transparent 45%), #FFF8EC",
       }}
     >
-      <div className="animate-pop-in w-full max-w-5xl text-center">
+      <div className="animate-pop-in w-full max-w-6xl text-center">
         <div className="mt-2">
-          <p className="text-center text-sm font-bold uppercase tracking-wide text-zinc-400">
-            Your Emochi Squad
-          </p>
-          <div className="mt-4 flex flex-wrap items-start justify-center gap-x-4 gap-y-6 sm:gap-x-6">
+          <h2 className="text-center text-3xl font-extrabold tracking-tight text-zinc-800 sm:text-4xl">
+            Meet Your Emochi Squad
+          </h2>
+          <div className="mt-6 flex flex-wrap items-start justify-center gap-x-6 gap-y-10 sm:gap-x-10">
             {leaderboard.map(({ role, score, name, color, tint }) => (
               <EmochiRing
                 key={role}
                 name={name}
                 color={color}
                 tint={tint}
+                score={score}
                 level={scoreToLevel(score)}
                 isTop={score === topScore}
               />
             ))}
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={onRetake}
-          className="mt-8 rounded-full bg-white px-6 py-3 text-sm font-bold text-zinc-500 shadow-[0_4px_0_0_rgba(0,0,0,0.08)] transition-all hover:-translate-y-0.5 hover:text-zinc-700"
-        >
-          🔄 Retake quiz
-        </button>
       </div>
     </div>
   );

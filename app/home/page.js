@@ -203,6 +203,9 @@ export default function MainPage() {
   const [scale, setScale]           = useState(1);
   const [friendsOpen, setFriends]   = useState(false);
   const [friendSearch, setFriendSearch] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimer = useRef(null);
   const [historyOpen, setHistory]   = useState(false);
   const [historyDate, setHistoryDate] = useState(getCheckinDate);
   const [historyScores, setHistoryScores] = useState(null);
@@ -216,6 +219,7 @@ export default function MainPage() {
   const [editName, setEditName]     = useState("You");
   const [editAvatar, setEditAvatar] = useState("wisey");
   const [savingProfile, setSavingProfile] = useState(false);
+  const [emochiScores, setEmochiScores] = useState({});
 
   // Daily check-in state
   const [stats, setStats]                       = useState(EMPTY_STATS);
@@ -243,6 +247,10 @@ export default function MainPage() {
         if (data.displayName) setUserName(data.displayName);
         if (data.avatar) setAvatar(data.avatar);
       })
+      .catch(() => {});
+    fetch("/api/emochi-scores")
+      .then(r => r.json())
+      .then(data => { if (data && !data.error) setEmochiScores(data); })
       .catch(() => {});
   }, []);
 
@@ -312,8 +320,28 @@ export default function MainPage() {
     }
   }, []);
 
-  const currentChar = CHARS.find(c => c.id === avatar) ?? CHARS[4];
+  // Merge DB scores into CHARS so levels reflect real data
+  const enrichedChars = CHARS.map(c => {
+    const s = emochiScores[c.id];
+    return s ? { ...c, score: s.score, level: s.level } : c;
+  });
+
+  const currentChar = enrichedChars.find(c => c.id === avatar) ?? enrichedChars[4];
   const PANEL_W = 248;
+
+  function handleFriendSearch(val) {
+    setFriendSearch(val);
+    clearTimeout(searchTimer.current);
+    if (val.trim().length < 2) { setSearchResults([]); return; }
+    setSearchLoading(true);
+    searchTimer.current = setTimeout(() => {
+      fetch(`/api/users/search?q=${encodeURIComponent(val.trim())}`)
+        .then(r => r.json())
+        .then(data => setSearchResults(Array.isArray(data) ? data : []))
+        .catch(() => setSearchResults([]))
+        .finally(() => setSearchLoading(false));
+    }, 350);
+  }
 
   function openProfile() {
     setEditName(userName);
@@ -481,7 +509,7 @@ export default function MainPage() {
                 border: "1px solid #e8e8e8", backdropFilter: "blur(8px)",
                 cursor: "pointer", transition: "background .2s",
               }}>
-                <span style={{ fontSize: 18 }}>📊</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: historyOpen ? "#fff" : "#555" }}>bar_chart</span>
                 <span style={{ fontSize: 14, fontWeight: 700, color: historyOpen ? "#fff" : "#555" }}>History</span>
               </button>
               <button onClick={() => setFriends(o => !o)} style={{
@@ -491,7 +519,7 @@ export default function MainPage() {
                 border: "1px solid #e8e8e8", backdropFilter: "blur(8px)",
                 cursor: "pointer", transition: "background .2s",
               }}>
-                <span style={{ fontSize: 18 }}>👥</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: friendsOpen ? "#fff" : "#555" }}>group</span>
                 <span style={{ fontSize: 14, fontWeight: 700, color: friendsOpen ? "#fff" : "#555" }}>Friends</span>
                 <span style={{
                   width: 18, height: 18, borderRadius: "50%",
@@ -521,12 +549,12 @@ export default function MainPage() {
                 }}>✕</button>
               </div>
               <div style={{ marginTop: 10, position: "relative" }}>
-                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: "#bbb", pointerEvents: "none" }}>🔍</span>
+                <span className="material-symbols-outlined" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 18, color: "#bbb", pointerEvents: "none" }}>search</span>
                 <input
                   type="text"
                   placeholder="Search friends…"
                   value={friendSearch}
-                  onChange={e => setFriendSearch(e.target.value)}
+                  onChange={e => handleFriendSearch(e.target.value)}
                   style={{
                     width: "100%", boxSizing: "border-box",
                     padding: "8px 12px 8px 32px",
@@ -538,9 +566,39 @@ export default function MainPage() {
               </div>
             </div>
             <div style={{ overflowY: "auto", flex: 1 }}>
-              <div style={{ padding: "10px 0" }}>
-                {FRIENDS.filter(f => f.name.toLowerCase().includes(friendSearch.toLowerCase())).map(f => <FriendRow key={f.id} friend={f} />)}
-              </div>
+              {friendSearch.trim().length === 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 20px", gap: 8 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 36, color: "#ccc" }}>person_search</span>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#bbb", textAlign: "center" }}>Search for people by name or username</div>
+                </div>
+              ) : searchLoading ? (
+                <div style={{ padding: "12px 20px", color: "#bbb", fontSize: 13 }}>Searching…</div>
+              ) : searchResults.length === 0 ? (
+                <div style={{ padding: "12px 20px", color: "#bbb", fontSize: 13 }}>No users found.</div>
+              ) : (
+                <div style={{ padding: "10px 0" }}>
+                  {searchResults.map(u => (
+                    <div key={u.id} className="friend-row" style={{
+                      display: "flex", alignItems: "center", gap: 12,
+                      padding: "8px 20px", cursor: "pointer",
+                    }}>
+                      <div style={{
+                        width: 38, height: 38, borderRadius: "50%",
+                        background: "#e8e8f0", flexShrink: 0,
+                        overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        {u.avatar_emochi
+                          ? <img src={`/idle/${u.avatar_emochi.toLowerCase()}.png`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          : <span className="material-symbols-outlined" style={{ fontSize: 22, color: "#aaa" }}>person</span>}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ color: INK, fontWeight: 700, fontSize: 13 }}>{u.display_name || u.username}</div>
+                        <div style={{ color: "#bbb", fontSize: 11 }}>@{u.username}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div style={{ padding: "14px 20px", borderTop: "1px solid #f0f0f0" }}>
               <button style={{
@@ -562,7 +620,7 @@ export default function MainPage() {
 
           {/* ══ WISEY DAILY SUGGESTION ══ */}
           {(() => {
-            const wiseyChar = CHARS.find(c => c.id === "wisey");
+            const wiseyChar = enrichedChars.find(c => c.id === "wisey");
             const tips = getWiseySuggestions(stats);
             const tip  = tips[wiseyIdx % tips.length];
             return (
@@ -615,7 +673,7 @@ export default function MainPage() {
             display: "flex", alignItems: "flex-end", justifyContent: "center",
             transition: "right .28s cubic-bezier(.4,0,.2,1)",
           }}>
-            {CHARS.map(c => (
+            {enrichedChars.map(c => (
               <CharNode
                 key={c.id} char={c}
                 hovered={hovChar === c.id}
@@ -813,12 +871,12 @@ export default function MainPage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 22 }}>
                   <div style={{
                     width: 80, height: 80, borderRadius: "50%",
-                    background: (CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc") + "22",
-                    border: `3px solid ${CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc"}`,
+                    background: (enrichedChars.find(c => c.id === editAvatar)?.color ?? "#ccc") + "22",
+                    border: `3px solid ${enrichedChars.find(c => c.id === editAvatar)?.color ?? "#ccc"}`,
                     position: "relative", overflow: "hidden", flexShrink: 0,
-                    boxShadow: `0 4px 16px ${CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc"}44`,
+                    boxShadow: `0 4px 16px ${enrichedChars.find(c => c.id === editAvatar)?.color ?? "#ccc"}44`,
                   }}>
-                    <Image src={`/idle/${CHARS.find(c => c.id === editAvatar)?.file.toLowerCase()}`} alt="avatar" fill style={{ objectFit: "cover" }} />
+                    <Image src={`/idle/${enrichedChars.find(c => c.id === editAvatar)?.file.toLowerCase()}`} alt="avatar" fill style={{ objectFit: "cover" }} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>DISPLAY NAME</div>
@@ -836,7 +894,7 @@ export default function MainPage() {
                 </div>
                 <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 10 }}>CHOOSE AVATAR</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 22 }}>
-                  {CHARS.map(c => (
+                  {enrichedChars.map(c => (
                     <div key={c.id} className="picker-char" onClick={() => setEditAvatar(c.id)}
                       style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer" }}>
                       <div style={{

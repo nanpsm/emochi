@@ -103,6 +103,7 @@ export async function POST(req) {
         // ── 1. Director picks who's in the room and who opens ──
         let participants = emotions;
         let current = emotions[0];
+        let summary = message;
         if (directorModel) {
           const plan = await askDirector(
             openai,
@@ -114,7 +115,9 @@ export async function POST(req) {
               `Zen=calm, Bubble=social connection, Dozy=rest/recovery).\n` +
               `Pick the 3-5 characters whose perspectives are MOST relevant to the user's message, ` +
               `favoring characters likely to DISAGREE with each other, and choose who speaks first.\n` +
-              `Respond with ONLY this JSON, nothing else: {"participants": ["Name", ...], "first": "Name"}`
+              `Also summarize the user's current topic neutrally in no more than 12 words.\n` +
+              `Respond with ONLY this JSON, nothing else: ` +
+              `{"participants": ["Name", ...], "first": "Name", "summary": "..."}`
           ).catch(() => null);
           if (Array.isArray(plan?.participants)) {
             const chosen = plan.participants.filter((n) => emotions.includes(n));
@@ -122,8 +125,11 @@ export async function POST(req) {
           }
           if (participants.includes(plan?.first)) current = plan.first;
           else current = participants[0];
+          if (typeof plan?.summary === "string" && plan.summary.trim()) {
+            summary = plan.summary.trim();
+          }
         }
-        emit({ type: "cast", participants, judge: judge ?? null });
+        emit({ type: "cast", participants, judge: judge ?? null, summary });
 
         // ── 2. Debate loop: speak, then director picks next or stops ──
         let speeches = 0;

@@ -155,10 +155,15 @@ function getWiseySuggestions(stats) {
   return tips;
 }
 
+function localDateStr(d) {
+  // Use local year/month/day (not UTC) so timezone offsets don't shift the date
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function getCheckinDate() {
   const now = new Date();
   if (now.getHours() < 6) now.setDate(now.getDate() - 1);
-  return now.toISOString().split("T")[0];
+  return localDateStr(now);
 }
 
 function getRecentDates() {
@@ -167,7 +172,7 @@ function getRecentDates() {
     const d = new Date();
     if (d.getHours() < 6) d.setDate(d.getDate() - 1);
     d.setDate(d.getDate() - i);
-    const key = d.toISOString().split("T")[0];
+    const key = localDateStr(d);
     const label = i === 0 ? "Today" : i === 1 ? "Yesterday"
       : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
     dates.push({ key, label });
@@ -271,22 +276,28 @@ export default function MainPage() {
     fetch(`/api/history-scores?date=${historyDate}`)
       .then(r => r.json())
       .then(rows => {
-        if (!Array.isArray(rows) || rows.length === 0) {
+        console.log("[history] date:", historyDate, "rows:", rows);
+        if (!Array.isArray(rows)) {
           setHistoryScores([]);
           return;
         }
-        // Map DB rows to CHARS shape, sorted by score desc
+        if (rows.length === 0) {
+          setHistoryScores([]);
+          return;
+        }
         const ranked = rows
           .map(row => {
             const char = CHARS.find(c => c.name.toLowerCase() === row.emochi_name.toLowerCase());
+            console.log("[history] row:", row.emochi_name, "→ char:", char?.name);
             if (!char) return null;
             return { ...char, score: row.score, level: Math.min(10, Math.floor(row.score / 10)) };
           })
           .filter(Boolean)
           .sort((a, b) => b.score - a.score);
+        console.log("[history] ranked:", ranked.length, "items");
         setHistoryScores(ranked);
       })
-      .catch(() => setHistoryScores([]))
+      .catch((e) => { console.error("[history] fetch error:", e); setHistoryScores([]); })
       .finally(() => setHistoryLoading(false));
   }, [historyOpen, historyDate]);
 

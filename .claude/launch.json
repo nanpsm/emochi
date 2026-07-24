@@ -3,8 +3,11 @@
   "configurations": [
     {
       "name": "emochi-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set PATH=%PATH%;C:\\Program Files\\Microsoft SDKs\\Azure\\CLI2\\wbin&& npm run dev"
+      ],
       "port": 3000
     }
   ]

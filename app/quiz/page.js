@@ -185,59 +185,46 @@ export default function QuizPage() {
   );
 }
 
-function EmochiRing({ name, color, tint, score, level, isTop }) {
-  const radius = 32;
-  const circumference = 2 * Math.PI * radius;
-  // ring fill reflects progress within the level (score's ones digit out of 10),
-  // e.g. score 56 -> level 5, ring shows 6/10 filled
-  const progressWithinLevel = score % 10;
-  const offset = circumference * (1 - progressWithinLevel / 10);
+function PodiumBar({ name, color, tint, score, level, rank, barHeight }) {
+  const isTop = rank === 0;
 
   return (
-    <div className="flex shrink-0 flex-col items-center">
-      <div className="relative h-28 w-28 sm:h-40 sm:w-40">
+    <div className="flex flex-col items-center">
+      {/* Rank label */}
+      <span className="mb-1 text-[10px] font-bold text-zinc-400 sm:text-xs">
+        #{rank + 1}
+      </span>
+
+      {/* Avatar */}
+      <div className="relative mb-1">
         {isTop && (
-          <span className="absolute -top-4 left-1/2 z-10 -translate-x-1/2 text-2xl sm:text-3xl">
+          <span className="absolute -top-4 left-1/2 z-10 -translate-x-1/2 text-lg sm:text-xl">
             👑
           </span>
         )}
-        <svg viewBox="0 0 80 80" className="h-full w-full -rotate-90">
-          <circle cx="40" cy="40" r={radius} strokeWidth="7" fill="none" stroke="#F1F1F1" />
-          <circle
-            cx="40"
-            cy="40"
-            r={radius}
-            strokeWidth="7"
-            fill="none"
-            stroke={color}
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            className="transition-all duration-700 ease-out"
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div
-            className="flex h-16 w-16 items-center justify-center rounded-full sm:h-24 sm:w-24"
-            style={{ backgroundColor: tint }}
-          >
-            <Image
-              src={`/idle/${name.toLowerCase()}.png`}
-              alt={name}
-              width={64}
-              height={64}
-              className="mix-blend-multiply"
-            />
-          </div>
-        </div>
-        <span
-          className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-extrabold text-white shadow-sm sm:px-3.5 sm:py-1.5 sm:text-base"
-          style={{ backgroundColor: color }}
-        >
+        <Image
+          src={`/idle/${name.toLowerCase()}.png`}
+          alt={name}
+          width={72}
+          height={72}
+          className="sm:h-[88px] sm:w-[88px]"
+        />
+      </div>
+
+      {/* Bar */}
+      <div
+        className="flex w-16 flex-col items-center justify-between rounded-t-2xl pt-3 pb-2 sm:w-24"
+        style={{ height: `${barHeight}px`, backgroundColor: color }}
+      >
+        <span className="text-xs font-extrabold text-white/90 sm:text-base">
           Lv {level}
         </span>
       </div>
-      <span className="mt-4 text-sm font-bold text-zinc-600 sm:text-lg">{name}</span>
+
+      {/* Name */}
+      <span className="mt-2 text-xs font-bold text-zinc-600 sm:text-sm">
+        {name}
+      </span>
     </div>
   );
 }
@@ -248,7 +235,7 @@ function MochiProgress({ step, total, color }) {
     <div>
       <div className="flex items-center justify-between text-xs font-bold text-zinc-500">
         <span className="rounded-full bg-white px-3 py-1 shadow-sm">
-          🍡 {step + 1} / {total}
+          {step + 1} / {total}
         </span>
         <span className="rounded-full bg-white px-3 py-1 shadow-sm">{percent}%</span>
       </div>
@@ -268,7 +255,13 @@ function QuizResults({ result, onRetake }) {
   const leaderboard = Object.entries(scores)
     .map(([role, score]) => ({ role, score, ...CHARACTERS[role] }))
     .sort((a, b) => b.score - a.score);
-  const topScore = leaderboard[0]?.score;
+
+  const MAX_BAR_H = 420;
+  const MIN_BAR_H = 100;
+
+  // Assign true ranks accounting for ties (same score = same rank)
+  const uniqueScores = [...new Set(leaderboard.map((e) => e.score))].sort((a, b) => b - a);
+  const totalSlots = leaderboard.length;
 
   return (
     <div
@@ -278,23 +271,31 @@ function QuizResults({ result, onRetake }) {
           "linear-gradient(160deg,#fffdf0 0%,#fff8d6 60%,#fffef5 100%)",
       }}
     >
-      <div className="animate-pop-in w-full max-w-6xl text-center">
-        <div className="mt-2">
-          <h2 className="text-center text-3xl font-extrabold tracking-tight text-zinc-800 sm:text-4xl">
-            Meet Your Emochi Squad
-          </h2>
-          <div className="mt-6 flex flex-wrap items-start justify-center gap-x-6 gap-y-10 sm:gap-x-10">
-            {leaderboard.map(({ role, score, name, color, tint }) => (
-              <EmochiRing
-                key={role}
-                name={name}
-                color={color}
-                tint={tint}
-                score={score}
-                level={scoreToLevel(score)}
-                isTop={score === topScore}
-              />
-            ))}
+      <div className="animate-pop-in w-full max-w-4xl text-center">
+        <h2 className="text-3xl font-extrabold tracking-tight text-zinc-800 sm:text-4xl">
+          Meet Your Emochi Squad
+        </h2>
+
+        {/* Podium chart */}
+        <div className="mt-8 relative">
+
+          <div className="flex items-end justify-center gap-3 sm:gap-5">
+            {leaderboard.map(({ role, score, name, color, tint }, idx) => {
+              const trueRank = uniqueScores.indexOf(score);
+              const barH = MAX_BAR_H - (trueRank * ((MAX_BAR_H - MIN_BAR_H) / (totalSlots - 1)));
+              return (
+                <PodiumBar
+                  key={role}
+                  name={name}
+                  color={color}
+                  tint={tint}
+                  score={score}
+                  level={scoreToLevel(score)}
+                  rank={trueRank}
+                  barHeight={barH}
+                />
+              );
+            })}
           </div>
         </div>
 

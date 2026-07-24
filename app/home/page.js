@@ -208,6 +208,7 @@ export default function MainPage() {
   const [userName, setUserName]     = useState("You");
   const [editName, setEditName]     = useState("You");
   const [editAvatar, setEditAvatar] = useState("wisey");
+  const [savingProfile, setSavingProfile] = useState(false);
 
   // Daily check-in state
   const [stats, setStats]                       = useState(EMPTY_STATS);
@@ -226,6 +227,16 @@ export default function MainPage() {
     upd();
     window.addEventListener("resize", upd);
     return () => window.removeEventListener("resize", upd);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/user")
+      .then(r => r.json())
+      .then(data => {
+        if (data.displayName) setUserName(data.displayName);
+        if (data.avatar) setAvatar(data.avatar);
+      })
+      .catch(() => {});
   }, []);
 
   // Auto-cycle cloud tab and Wisey tip every 4 seconds
@@ -266,10 +277,20 @@ export default function MainPage() {
     signOut({ callbackUrl: "/" });
   }
 
-  function saveProfile() {
-    setUserName(editName.trim() || "You");
-    setAvatar(editAvatar);
-    setProfile(false);
+  async function saveProfile() {
+    setSavingProfile(true);
+    try {
+      await fetch("/api/user", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: editName.trim() || null, avatar: editAvatar }),
+      });
+      setUserName(editName.trim() || "You");
+      setAvatar(editAvatar);
+      setProfile(false);
+    } finally {
+      setSavingProfile(false);
+    }
   }
 
   function toggleFeeling(idx) {
@@ -484,7 +505,7 @@ export default function MainPage() {
                   position: "relative", overflow: "hidden", flexShrink: 0,
                   boxShadow: `0 4px 16px ${wiseyChar.color}55`,
                 }}>
-                  <Image src={`/agents/${wiseyChar.file}`} alt="Wisey" fill style={{ objectFit: "cover" }} />
+                  <Image src={`/idle/${wiseyChar.file}`} alt="Wisey" fill style={{ objectFit: "cover" }} />
                 </div>
                 {/* Message bubble */}
                 <div style={{
@@ -572,7 +593,7 @@ export default function MainPage() {
                 filter: `drop-shadow(0 16px 40px ${charPopup.char.color}88)`,
                 animation: "cloudPop .25s ease",
               }}>
-                <Image src={`/agents/${charPopup.char.file}`} alt={charPopup.char.name} fill style={{ objectFit: "contain" }} />
+                <Image src={`/idle/${charPopup.char.file}`} alt={charPopup.char.name} fill style={{ objectFit: "contain" }} />
               </div>
 
               {/* CSS conversation cloud — auto-sizes to text, no PNG */}
@@ -765,8 +786,9 @@ export default function MainPage() {
                   <button onClick={saveProfile} style={{
                     flex: 2, padding: "12px 0", borderRadius: 30,
                     background: "linear-gradient(90deg,#ff8a3d,#ff5e7a)",
-                    border: "none", cursor: "pointer", color: "#fff", fontWeight: 800, fontSize: 14,
-                  }}>Save Changes</button>
+                    border: "none", cursor: savingProfile ? "not-allowed" : "pointer",
+                    color: "#fff", fontWeight: 800, fontSize: 14, opacity: savingProfile ? 0.7 : 1,
+                  }} disabled={savingProfile}>{savingProfile ? "Saving…" : "Save Changes"}</button>
                 </div>
                 <div style={{ marginTop: 16, borderTop: "1px solid #f5f5f5", paddingTop: 16 }}>
                   {!confirmDelete ? (
@@ -921,7 +943,7 @@ export default function MainPage() {
                         </div>
                         {/* Image — fills flex space */}
                         <div style={{ position: "relative", width: "100%", flex: 1, minHeight: 0 }}>
-                          <Image src={`/agents/${char.file}`} alt={char.name} fill
+                          <Image src={`/idle/${char.file}`} alt={char.name} fill
                             style={{ objectFit: "contain", filter: isFirst ? `drop-shadow(0 4px 12px ${char.color}88)` : "none" }} />
                         </div>
                         {/* Name */}
@@ -1235,7 +1257,7 @@ function CharNode({ char, hovered, onEnter, onLeave, onClick }) {
         }} />
       </div>
       <div ref={imgRef} style={{ position: "relative", width: w, height: char.imgH }}>
-        <Image src={`/agents/${char.file}`} alt={char.name} fill
+        <Image src={`/idle/${char.file}`} alt={char.name} fill
           style={{
             objectFit: "contain",
             filter: `drop-shadow(0 ${char.isMain ? 18 : 10}px ${char.isMain ? 28 : 14}px rgba(0,0,0,.14))`,

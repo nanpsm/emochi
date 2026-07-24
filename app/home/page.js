@@ -370,7 +370,7 @@ export default function MainPage() {
                   position: "relative", overflow: "hidden", flexShrink: 0,
                   boxShadow: `0 2px 8px ${currentChar.color}44`,
                 }}>
-                  <Image src={`/agents/${currentChar.file}`} alt={currentChar.name} fill style={{ objectFit: "cover" }} />
+                  <Image src={`/idle/${currentChar.file.toLowerCase()}`} alt={currentChar.name} fill style={{ objectFit: "cover" }} />
                 </div>
                 <span style={{ color: INK, fontWeight: 700, fontSize: 13 }}>{userName}</span>
               </button>
@@ -691,7 +691,7 @@ export default function MainPage() {
                     position: "relative", overflow: "hidden", flexShrink: 0,
                     boxShadow: `0 4px 16px ${CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc"}44`,
                   }}>
-                    <Image src={`/agents/${CHARS.find(c => c.id === editAvatar)?.file}`} alt="avatar" fill style={{ objectFit: "cover" }} />
+                    <Image src={`/idle/${CHARS.find(c => c.id === editAvatar)?.file.toLowerCase()}`} alt="avatar" fill style={{ objectFit: "cover" }} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>DISPLAY NAME</div>
@@ -719,7 +719,7 @@ export default function MainPage() {
                         boxShadow: editAvatar === c.id ? `0 0 0 3px ${c.color}44` : "none",
                         transition: "box-shadow .15s, border-color .15s",
                       }}>
-                        <Image src={`/agents/${c.file}`} alt={c.name} fill style={{ objectFit: "contain", padding: 4 }} />
+                        <Image src={`/idle/${c.file.toLowerCase()}`} alt={c.name} fill style={{ objectFit: "contain", padding: 4 }} />
                       </div>
                       <span style={{ fontSize: 11, fontWeight: 700, color: editAvatar === c.id ? c.color : "#aaa" }}>{c.name}</span>
                     </div>

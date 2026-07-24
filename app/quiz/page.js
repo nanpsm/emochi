@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { QUIZ_QUESTIONS, computeQuizResults } from "@/lib/quiz-questions";
 import { CHARACTERS, computeEmochiScores } from "@/lib/emochi-scores";
 
@@ -12,15 +13,17 @@ function scoreToLevel(score) {
   return Math.min(10, Math.floor(score / 10));
 }
 
-const MASCOTS = {
-  "I/E": { name: "Bubble", color: "#F97316", tint: "#FFEDD9" },
-  "S/N": { name: "Wisey", color: "#C9A857", tint: "#FBF3D9" },
-  "T/F": { name: "Tear", color: "#4A90D9", tint: "#DCEBFB" },
-  "J/P": { name: "Zen", color: "#5FD4C4", tint: "#DFF9F4" },
-  sleep: { name: "Dozy", color: "#6C7A96", tint: "#E4E8F2" },
-  stress: { name: "Buzzy", color: "#FF6B4A", tint: "#FFE4DC" },
-  socialTime: { name: "Cheer", color: "#FFC53D", tint: "#FFF3D3" },
-};
+// All 8 Emochi, cycled one-per-question (question 9 restarts the rotation)
+const MASCOT_ROTATION = [
+  { name: "Cheer", color: "#FFC53D", tint: "#FFF3D3" },
+  { name: "Fear", color: "#A78BFA", tint: "#EDE6FE" },
+  { name: "Buzzy", color: "#FF6B4A", tint: "#FFE4DC" },
+  { name: "Tear", color: "#4A90D9", tint: "#DCEBFB" },
+  { name: "Zen", color: "#5FD4C4", tint: "#DFF9F4" },
+  { name: "Bubble", color: "#F97316", tint: "#FFEDD9" },
+  { name: "Dozy", color: "#6C7A96", tint: "#E4E8F2" },
+  { name: "Wisey", color: "#C9A857", tint: "#FBF3D9" },
+];
 
 const CHEER_LINES = [
   "Ooh, love that answer!",
@@ -37,7 +40,7 @@ export default function QuizPage() {
   const [bounceKey, setBounceKey] = useState(0);
 
   const question = QUIZ_QUESTIONS[step];
-  const mascot = MASCOTS[question?.dimension];
+  const mascot = MASCOT_ROTATION[step % MASCOT_ROTATION.length];
   const selectedValue = answers[question?.id];
   const isLastQuestion = step === TOTAL - 1;
 
@@ -77,33 +80,33 @@ export default function QuizPage() {
       className="flex min-h-screen flex-col items-center overflow-hidden px-4 py-8 font-[family-name:var(--font-baloo)] sm:py-12"
       style={{
         background:
-          "radial-gradient(circle at 15% 0%, #FFF3D3 0%, transparent 45%), radial-gradient(circle at 85% 100%, #DCEBFB 0%, transparent 45%), #FFF8EC",
+          "linear-gradient(160deg,#fffdf0 0%,#fff8d6 60%,#fffef5 100%)",
       }}
     >
-      <div className="w-full max-w-lg">
+      <div className="w-full max-w-2xl">
         <MochiProgress step={step} total={TOTAL} color={mascot.color} />
 
         <div
           key={question.id}
-          className="animate-pop-in mt-6 rounded-[2rem] bg-white p-6 shadow-[0_8px_0_0_rgba(0,0,0,0.06)] sm:p-8"
+          className="animate-pop-in mt-6 rounded-[2rem] bg-white p-6 shadow-[0_8px_0_0_rgba(0,0,0,0.06)] sm:p-9"
         >
           <div className="flex flex-col items-center text-center">
             <div
-              className="animate-float-bob relative flex h-28 w-28 items-center justify-center rounded-full"
+              className="animate-float-bob relative flex h-24 w-24 items-center justify-center rounded-full sm:h-28 sm:w-28"
               style={{ background: mascot.tint }}
             >
               <Image
-                src={`/agents/${mascot.name}.png`}
+                src={`/idle/${mascot.name.toLowerCase()}.png`}
                 alt={mascot.name}
-                width={96}
-                height={96}
-                className="mix-blend-multiply"
+                width={84}
+                height={84}
+                className="mix-blend-multiply sm:h-[100px] sm:w-[100px]"
                 priority
               />
             </div>
 
             <span
-              className="mt-3 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide text-white"
+              className="mt-3 rounded-full px-3.5 py-1 text-xs font-bold uppercase tracking-wide text-white sm:text-sm"
               style={{ backgroundColor: mascot.color }}
             >
               {mascot.name} asks
@@ -122,7 +125,7 @@ export default function QuizPage() {
                   key={option.value}
                   type="button"
                   onClick={() => selectOption(option.value)}
-                  className={`group flex w-full items-center gap-3 rounded-2xl border-[3px] px-4 py-4 text-left text-base font-semibold transition-all active:scale-[0.98] ${
+                  className={`group flex w-full items-center gap-3 rounded-2xl border-[3px] px-5 py-4 text-left text-base font-semibold transition-all active:scale-[0.98] ${
                     isSelected
                       ? "scale-[1.02] border-current shadow-md"
                       : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-200 hover:bg-white"
@@ -182,56 +185,46 @@ export default function QuizPage() {
   );
 }
 
-function EmochiRing({ name, color, tint, level, isTop }) {
-  const radius = 32;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference * (1 - level / 10);
+function PodiumBar({ name, color, tint, score, level, rank, barHeight }) {
+  const isTop = rank === 0;
 
   return (
-    <div className="flex shrink-0 flex-col items-center">
-      <div className="relative h-20 w-20 sm:h-28 sm:w-28">
+    <div className="flex flex-col items-center">
+      {/* Rank label */}
+      <span className="mb-1 text-[10px] font-bold text-zinc-400 sm:text-xs">
+        #{rank + 1}
+      </span>
+
+      {/* Avatar */}
+      <div className="relative mb-1">
         {isTop && (
-          <span className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 text-base sm:text-xl">
+          <span className="absolute -top-4 left-1/2 z-10 -translate-x-1/2 text-lg sm:text-xl">
             👑
           </span>
         )}
-        <svg viewBox="0 0 80 80" className="h-full w-full -rotate-90">
-          <circle cx="40" cy="40" r={radius} strokeWidth="8" fill="none" stroke="#F1F1F1" />
-          <circle
-            cx="40"
-            cy="40"
-            r={radius}
-            strokeWidth="8"
-            fill="none"
-            stroke={color}
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            className="transition-all duration-700 ease-out"
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div
-            className="flex h-11 w-11 items-center justify-center rounded-full sm:h-16 sm:w-16"
-            style={{ backgroundColor: tint }}
-          >
-            <Image
-              src={`/agents/${name}.png`}
-              alt={name}
-              width={44}
-              height={44}
-              className="mix-blend-multiply"
-            />
-          </div>
-        </div>
-        <span
-          className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-extrabold text-white shadow-sm sm:px-2.5 sm:text-xs"
-          style={{ backgroundColor: color }}
-        >
+        <Image
+          src={`/idle/${name.toLowerCase()}.png`}
+          alt={name}
+          width={72}
+          height={72}
+          className="sm:h-[88px] sm:w-[88px]"
+        />
+      </div>
+
+      {/* Bar */}
+      <div
+        className="flex w-16 flex-col items-center justify-between rounded-t-2xl pt-3 pb-2 sm:w-24"
+        style={{ height: `${barHeight}px`, backgroundColor: color }}
+      >
+        <span className="text-xs font-extrabold text-white/90 sm:text-base">
           Lv {level}
         </span>
       </div>
-      <span className="mt-3 text-xs font-bold text-zinc-600 sm:text-sm">{name}</span>
+
+      {/* Name */}
+      <span className="mt-2 text-xs font-bold text-zinc-600 sm:text-sm">
+        {name}
+      </span>
     </div>
   );
 }
@@ -242,7 +235,7 @@ function MochiProgress({ step, total, color }) {
     <div>
       <div className="flex items-center justify-between text-xs font-bold text-zinc-500">
         <span className="rounded-full bg-white px-3 py-1 shadow-sm">
-          🍡 {step + 1} / {total}
+          {step + 1} / {total}
         </span>
         <span className="rounded-full bg-white px-3 py-1 shadow-sm">{percent}%</span>
       </div>
@@ -257,45 +250,62 @@ function MochiProgress({ step, total, color }) {
 }
 
 function QuizResults({ result, onRetake }) {
+  const router = useRouter();
   const scores = computeEmochiScores(result);
   const leaderboard = Object.entries(scores)
     .map(([role, score]) => ({ role, score, ...CHARACTERS[role] }))
     .sort((a, b) => b.score - a.score);
-  const topScore = leaderboard[0]?.score;
+
+  const MAX_BAR_H = 420;
+  const MIN_BAR_H = 100;
+
+  // Assign true ranks accounting for ties (same score = same rank)
+  const uniqueScores = [...new Set(leaderboard.map((e) => e.score))].sort((a, b) => b - a);
+  const totalSlots = leaderboard.length;
 
   return (
     <div
       className="flex min-h-screen w-full flex-col items-center justify-center px-4 py-12 font-[family-name:var(--font-baloo)] sm:py-16"
       style={{
         background:
-          "radial-gradient(circle at 20% 10%, #FFF3D3 0%, transparent 45%), radial-gradient(circle at 80% 90%, #DCEBFB 0%, transparent 45%), #FFF8EC",
+          "linear-gradient(160deg,#fffdf0 0%,#fff8d6 60%,#fffef5 100%)",
       }}
     >
-      <div className="animate-pop-in w-full max-w-5xl text-center">
-        <div className="mt-2">
-          <p className="text-center text-sm font-bold uppercase tracking-wide text-zinc-400">
-            Your Emochi Squad
-          </p>
-          <div className="mt-4 flex flex-wrap items-start justify-center gap-x-4 gap-y-6 sm:gap-x-6">
-            {leaderboard.map(({ role, score, name, color, tint }) => (
-              <EmochiRing
-                key={role}
-                name={name}
-                color={color}
-                tint={tint}
-                level={scoreToLevel(score)}
-                isTop={score === topScore}
-              />
-            ))}
+      <div className="animate-pop-in w-full max-w-4xl text-center">
+        <h2 className="text-3xl font-extrabold tracking-tight text-zinc-800 sm:text-4xl">
+          Meet Your Emochi Squad
+        </h2>
+
+        {/* Podium chart */}
+        <div className="mt-8 relative">
+
+          <div className="flex items-end justify-center gap-3 sm:gap-5">
+            {leaderboard.map(({ role, score, name, color, tint }, idx) => {
+              const trueRank = uniqueScores.indexOf(score);
+              const barH = MAX_BAR_H - (trueRank * ((MAX_BAR_H - MIN_BAR_H) / (totalSlots - 1)));
+              return (
+                <PodiumBar
+                  key={role}
+                  name={name}
+                  color={color}
+                  tint={tint}
+                  score={score}
+                  level={scoreToLevel(score)}
+                  rank={trueRank}
+                  barHeight={barH}
+                />
+              );
+            })}
           </div>
         </div>
 
         <button
           type="button"
-          onClick={onRetake}
-          className="mt-8 rounded-full bg-white px-6 py-3 text-sm font-bold text-zinc-500 shadow-[0_4px_0_0_rgba(0,0,0,0.08)] transition-all hover:-translate-y-0.5 hover:text-zinc-700"
+          onClick={() => router.push("/interests")}
+          className="mt-10 rounded-full px-9 py-4 text-base font-bold text-white shadow-[0_5px_0_0_rgba(0,0,0,0.15)] transition-all hover:-translate-y-0.5"
+          style={{ backgroundColor: "#1a1a2e" }}
         >
-          🔄 Retake quiz
+          Continue →
         </button>
       </div>
     </div>

@@ -9,7 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.114.0",
     "@prisma/client": "^5.22.0",
+    "mssql": "^12.7.0",
     "next": "16.2.11",
     "next-auth": "^5.0.0-beta.32",
     "prisma": "^5.22.0",

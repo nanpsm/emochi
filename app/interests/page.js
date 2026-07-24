@@ -1,23 +1,47 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { INTEREST_CATEGORIES, MAX_INTERESTS } from "@/lib/interests";
 
-const ALL_INTERESTS = INTEREST_CATEGORIES.flatMap((category) =>
-  category.items.map((item) => ({
-    label: item.label,
-    icon: item.icon,
-    color: category.color,
-    tint: category.tint,
-  }))
+const LOCAL_MAP = Object.fromEntries(
+  INTEREST_CATEGORIES.flatMap((cat) =>
+    cat.items.map((item) => [
+      item.label.toLowerCase(),
+      { icon: item.icon, color: cat.color, tint: cat.tint },
+    ])
+  )
 );
+
+function enrichInterest(name) {
+  const match = LOCAL_MAP[name.toLowerCase()];
+  return {
+    label: name,
+    icon: match?.icon ?? "interests",
+    color: match?.color ?? "#6C7A96",
+    tint: match?.tint ?? "#E4E8F2",
+  };
+}
 
 export default function InterestsPage() {
   const router = useRouter();
+  const [allInterests, setAllInterests] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState([]);
   const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    fetch("/api/interests")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setAllInterests(data.map((row) => enrichInterest(row.name)));
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
   function toggle(item) {
     setSelected((prev) => {
@@ -35,7 +59,7 @@ export default function InterestsPage() {
   }
 
   const isFull = selected.length >= MAX_INTERESTS;
-  const filtered = ALL_INTERESTS.filter((item) =>
+  const filtered = allInterests.filter((item) =>
     item.label.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -100,6 +124,12 @@ export default function InterestsPage() {
         />
 
         <div className="mt-8 flex flex-wrap justify-center gap-4">
+          {loading && (
+            <p className="text-zinc-400 text-sm font-semibold">Loading interests...</p>
+          )}
+          {!loading && filtered.length === 0 && (
+            <p className="text-zinc-400 text-sm font-semibold">No interests found.</p>
+          )}
           {filtered.map(({ label, icon, color, tint }) => {
             const isSelected = selected.includes(label);
             const isDisabled = !isSelected && isFull;

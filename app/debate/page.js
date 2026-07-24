@@ -1,36 +1,33 @@
 import Image from "next/image";
 
 const CHARACTERS = [
-  { name: "Bubble", file: "bubble.png",       left: 18, top: 34, size: 110 },
-  { name: "Wisey",  file: "wisey-judge.png",  left: 49.5, top: 33.5, size: 185 },
-  { name: "Buzzy",  file: "buzzy.png",        left: 78, top: 34, size: 110 },
-  { name: "Cheer",  file: "cheer.png",        left: 60, top: 54, size: 120 },
-  { name: "Fear",   file: "fear.png",         left: 35, top: 54, size: 200 },
-  { name: "Tear",   file: "tear.png",         left: 14, top: 60, size: 110 },
-  { name: "Zen",    file: "zen.png",          left: 83, top: 60, size: 110 },
-  { name: "Dozy",   file: "dozy.png",         left: 66, top: 76, size: 90 },
+  { name: "Bubble", file: "bubble.png",       left: 18, top: 30, size: 220 },
+  { name: "Wisey",  file: "wisey-judge.png",  left: 49.5, top: 32.5, size: 185 },
+  { name: "Buzzy",  file: "buzzy.png",        left: 78, top: 30, size: 220 },
+  { name: "Cheer",  file: "cheer.png",        left: 68, top: 54, size: 210 },
+  { name: "Fear",   file: "fear.png",         left: 32, top: 54, size: 200 },
+  { name: "Tear",   file: "tear.png",         left: 12, top: 60, size: 220 },
+  { name: "Zen",    file: "zen.png",          left: 90, top: 60, size: 220 },
+  { name: "Dozy",   file: "dozy.png",         left: 67, top: 76, size: 220 },
 ];
 
 export default function DebatePage() {
   return (
     <div style={{
+      position: "relative",
       width: "100vw", height: "100vh",
-      display: "flex", alignItems: "center", justifyContent: "center",
       overflow: "hidden",
-      background: "#000",
     }}>
       <div style={{
         position: "relative",
-        width: "min(100vw, 150vh, 1536px)",
-        aspectRatio: "3 / 2",
-        overflow: "hidden",
+        width: "100%", height: "100%",
       }}>
         <Image
           src="/debate.png"
           alt=""
           fill
           priority
-          style={{ objectFit: "cover" }}
+          style={{ objectFit: "fill" }}
         />
 
         {CHARACTERS.map((c) => (

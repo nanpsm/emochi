@@ -381,18 +381,26 @@ export default function MainPage() {
   }
 
   async function respondToRequest(requestId, fromUserId, action) {
-    await fetch("/api/friends/respond", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId, action }),
-    });
-    setFriendRequests(prev => prev.filter(r => r.request_id !== requestId));
-    if (action === "accept") {
-      // Refresh friends list
-      fetch("/api/friends")
-        .then(r => r.json())
-        .then(data => { if (Array.isArray(data)) setFriendsList(data); })
-        .catch(() => {});
+    try {
+      const res = await fetch("/api/friends/respond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, action }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error("Respond failed:", res.status, err);
+        return;
+      }
+      setFriendRequests(prev => prev.filter(r => r.request_id !== requestId));
+      if (action === "accept") {
+        fetch("/api/friends")
+          .then(r => r.json())
+          .then(data => { if (Array.isArray(data)) setFriendsList(data); })
+          .catch(() => {});
+      }
+    } catch (e) {
+      console.error("Respond error:", e);
     }
   }
 

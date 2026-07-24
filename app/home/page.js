@@ -220,7 +220,9 @@ export default function MainPage() {
   const [selectedWork, setSelectedWork]         = useState(null);
   const [checkinDone, setCheckinDone]           = useState(false);
   const [cloudTab, setCloudTab]                 = useState(0); // 0=Mood 1=Sleep 2=Work
+  const [wiseyTips, setWiseyTips]               = useState(null); // array of suggestions or null
   const [wiseyIdx, setWiseyIdx]                 = useState(0);
+  const [wiseyLoading, setWiseyLoading]         = useState(false);
 
   useEffect(() => {
     const upd = () =>
@@ -240,14 +242,18 @@ export default function MainPage() {
       .catch(() => {});
   }, []);
 
-  // Auto-cycle cloud tab and Wisey tip every 4 seconds
+  // Auto-cycle the cloud stat widget every 4 seconds
   useEffect(() => {
-    const id = setInterval(() => {
-      setCloudTab(t => (t + 1) % 3);
-      setWiseyIdx(i => i + 1);
-    }, 4000);
+    const id = setInterval(() => setCloudTab(t => (t + 1) % 3), 4000);
     return () => clearInterval(id);
   }, []);
+
+  // Auto-cycle through Wisey's suggestions (when there's more than one) every 5 seconds
+  useEffect(() => {
+    if (!wiseyTips || wiseyTips.length <= 1) return;
+    const id = setInterval(() => setWiseyIdx(i => (i + 1) % wiseyTips.length), 5000);
+    return () => clearInterval(id);
+  }, [wiseyTips]);
 
   // Show check-in popup once per day (resets at 6am); restore stats if already done
   useEffect(() => {
@@ -311,6 +317,31 @@ export default function MainPage() {
       { icon: "💼", label: "Work",  short: work.short,  pct: work.pct,  color: "#f59e0b" },
       { icon: "😊", label: "Mood",  short: mood.emoji,  pct: mood.pct,  color: "#22c55e" },
     ]);
+    if (sleep.pct > 0) fetchWiseyTip(feelingIdxs, sleepIdx, workIdx, sleep, work, mood);
+  }
+
+  // Ask the real Wisey Foundry agent for several personalized insights using
+  // today's actual check-in data (sleep/work/mood + which emotions shifted).
+  // Falls back to the canned tips silently if Foundry is unreachable.
+  async function fetchWiseyTip(feelingIdxs, sleepIdx, workIdx, sleep, work, mood) {
+    setWiseyLoading(true);
+    try {
+      const deltas = calcDeltas(feelingIdxs, sleepIdx, workIdx);
+      const r = await fetch("/api/wisey-tip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userName, sleep, work, mood, deltas }),
+      });
+      const data = await r.json();
+      if (r.ok && data.replies?.length > 0) {
+        setWiseyTips(data.replies);
+        setWiseyIdx(0);
+      }
+    } catch {
+      // keep the canned fallback tip on any network/auth failure
+    } finally {
+      setWiseyLoading(false);
+    }
   }
 
   function submitCheckin() {
@@ -500,8 +531,10 @@ export default function MainPage() {
           {/* ══ WISEY DAILY SUGGESTION ══ */}
           {(() => {
             const wiseyChar = CHARS.find(c => c.id === "wisey");
-            const tips = getWiseySuggestions(stats);
-            const tip  = tips[wiseyIdx % tips.length];
+            const tips = wiseyLoading
+              ? ["Thinking about your day…"]
+              : wiseyTips?.length > 0 ? wiseyTips : getWiseySuggestions(stats);
+            const tip = tips[wiseyIdx % tips.length];
             return (
               <div style={{
                 position: "absolute", top: 100, left: "50%",
@@ -520,22 +553,39 @@ export default function MainPage() {
                   <Image src={`/idle/${wiseyChar.file}`} alt="Wisey" fill style={{ objectFit: "cover" }} />
                 </div>
                 {/* Message bubble */}
-                <div style={{
-                  background: "rgba(255,255,255,.92)",
-                  backdropFilter: "blur(14px)",
-                  borderRadius: "4px 20px 20px 20px",
-                  padding: "14px 22px 16px",
-                  boxShadow: "0 6px 28px rgba(0,0,0,.12)",
-                  border: `1px solid ${wiseyChar.color}30`,
-                }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: wiseyChar.color, letterSpacing: .3, marginBottom: 6 }}>
-                    Wisey
+                <div
+                  onClick={() => tips.length > 1 && setWiseyIdx(i => (i + 1) % tips.length)}
+                  style={{
+                    background: "rgba(255,255,255,.92)",
+                    backdropFilter: "blur(14px)",
+                    borderRadius: "4px 20px 20px 20px",
+                    padding: "14px 22px 16px",
+                    boxShadow: "0 6px 28px rgba(0,0,0,.12)",
+                    border: `1px solid ${wiseyChar.color}30`,
+                    cursor: tips.length > 1 ? "pointer" : "default",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: wiseyChar.color, letterSpacing: .3 }}>
+                      Wisey
+                    </div>
+                    {tips.length > 1 && (
+                      <div style={{ display: "flex", gap: 5 }}>
+                        {tips.map((_, i) => (
+                          <div key={i} style={{
+                            width: i === wiseyIdx % tips.length ? 14 : 6, height: 6, borderRadius: 4,
+                            background: i === wiseyIdx % tips.length ? wiseyChar.color : "#ddd",
+                            transition: "all .3s",
+                          }} />
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div
-                    key={wiseyIdx}
+                    key={tip}
                     style={{
                       fontSize: 16, fontWeight: 600, color: "#29293a",
-                      lineHeight: 1.6, maxWidth: 420,
+                      lineHeight: 1.6, maxWidth: 420, whiteSpace: "pre-wrap",
                       animation: "wiseyFade .4s ease",
                     }}
                   >

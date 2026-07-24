@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
+import { auth, signIn, signOut } from "@/auth";
+
+export default async function Home() {
+  const session = await auth();
 
 const MOODLINGS = [
   { key: "cheer",  color: "#FFC53D", name: "Cheer",  quote: "What could go right?",           file: "Cheer.png",  animDelay: "0s"    },

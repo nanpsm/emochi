@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 const INK = "#1a1a2e";
 
@@ -205,6 +206,7 @@ function calcDeltas(selectedFeelings, sleepIdx, workIdx) {
 // ── Main page ─────────────────────────────────────────────────
 
 export default function MainPage() {
+  const router = useRouter();
   const [scale, setScale]           = useState(1);
   const [friendsOpen, setFriends]   = useState(false);
   const [friendSearch, setFriendSearch] = useState("");
@@ -976,7 +978,7 @@ export default function MainPage() {
             position: "absolute", left: 0, right: 0,
             bottom: 36, display: "flex", justifyContent: "center",
           }}>
-            <button className="btn-debate" style={{
+            <button onClick={() => router.push("/debate")} className="btn-debate" style={{
               display: "flex", alignItems: "center", gap: 14,
               padding: "17px 52px", borderRadius: 16,
               background: "linear-gradient(135deg,#1a1a2e 0%,#2e1f5e 100%)",

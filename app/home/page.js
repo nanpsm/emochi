@@ -216,6 +216,7 @@ export default function MainPage() {
   const [editName, setEditName]     = useState("You");
   const [editAvatar, setEditAvatar] = useState("wisey");
   const [savingProfile, setSavingProfile] = useState(false);
+  const [emochiScores, setEmochiScores] = useState({});
 
   // Daily check-in state
   const [stats, setStats]                       = useState(EMPTY_STATS);
@@ -243,6 +244,10 @@ export default function MainPage() {
         if (data.displayName) setUserName(data.displayName);
         if (data.avatar) setAvatar(data.avatar);
       })
+      .catch(() => {});
+    fetch("/api/emochi-scores")
+      .then(r => r.json())
+      .then(data => { if (data && !data.error) setEmochiScores(data); })
       .catch(() => {});
   }, []);
 
@@ -312,7 +317,13 @@ export default function MainPage() {
     }
   }, []);
 
-  const currentChar = CHARS.find(c => c.id === avatar) ?? CHARS[4];
+  // Merge DB scores into CHARS so levels reflect real data
+  const enrichedChars = CHARS.map(c => {
+    const s = emochiScores[c.id];
+    return s ? { ...c, score: s.score, level: s.level } : c;
+  });
+
+  const currentChar = enrichedChars.find(c => c.id === avatar) ?? enrichedChars[4];
   const PANEL_W = 248;
 
   function openProfile() {
@@ -562,7 +573,7 @@ export default function MainPage() {
 
           {/* ══ WISEY DAILY SUGGESTION ══ */}
           {(() => {
-            const wiseyChar = CHARS.find(c => c.id === "wisey");
+            const wiseyChar = enrichedChars.find(c => c.id === "wisey");
             const tips = getWiseySuggestions(stats);
             const tip  = tips[wiseyIdx % tips.length];
             return (
@@ -615,7 +626,7 @@ export default function MainPage() {
             display: "flex", alignItems: "flex-end", justifyContent: "center",
             transition: "right .28s cubic-bezier(.4,0,.2,1)",
           }}>
-            {CHARS.map(c => (
+            {enrichedChars.map(c => (
               <CharNode
                 key={c.id} char={c}
                 hovered={hovChar === c.id}
@@ -813,12 +824,12 @@ export default function MainPage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 22 }}>
                   <div style={{
                     width: 80, height: 80, borderRadius: "50%",
-                    background: (CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc") + "22",
-                    border: `3px solid ${CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc"}`,
+                    background: (enrichedChars.find(c => c.id === editAvatar)?.color ?? "#ccc") + "22",
+                    border: `3px solid ${enrichedChars.find(c => c.id === editAvatar)?.color ?? "#ccc"}`,
                     position: "relative", overflow: "hidden", flexShrink: 0,
-                    boxShadow: `0 4px 16px ${CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc"}44`,
+                    boxShadow: `0 4px 16px ${enrichedChars.find(c => c.id === editAvatar)?.color ?? "#ccc"}44`,
                   }}>
-                    <Image src={`/idle/${CHARS.find(c => c.id === editAvatar)?.file.toLowerCase()}`} alt="avatar" fill style={{ objectFit: "cover" }} />
+                    <Image src={`/idle/${enrichedChars.find(c => c.id === editAvatar)?.file.toLowerCase()}`} alt="avatar" fill style={{ objectFit: "cover" }} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>DISPLAY NAME</div>
@@ -836,7 +847,7 @@ export default function MainPage() {
                 </div>
                 <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 10 }}>CHOOSE AVATAR</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 22 }}>
-                  {CHARS.map(c => (
+                  {enrichedChars.map(c => (
                     <div key={c.id} className="picker-char" onClick={() => setEditAvatar(c.id)}
                       style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer" }}>
                       <div style={{

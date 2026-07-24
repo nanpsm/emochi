@@ -7,6 +7,11 @@ import { CHARACTERS, computeEmochiScores } from "@/lib/emochi-scores";
 
 const TOTAL = QUIZ_QUESTIONS.length;
 
+// 0-100 score -> 0-10 level (score 50-59 = level 5, 100 = level 10)
+function scoreToLevel(score) {
+  return Math.min(10, Math.floor(score / 10));
+}
+
 const MASCOTS = {
   "I/E": { name: "Bubble", color: "#F97316", tint: "#FFEDD9" },
   "S/N": { name: "Wisey", color: "#C9A857", tint: "#FBF3D9" },
@@ -24,27 +29,6 @@ const CHEER_LINES = [
   "Yes! Learning more about you.",
   "Got it, moving along!",
 ];
-
-const RESULT_LABELS = {
-  sleep: {
-    lt5: "Less than 5 hours",
-    "5to6": "5–6 hours",
-    "7to9": "7–9 hours",
-    gt9: "More than 9 hours",
-  },
-  stress: {
-    very_relaxed: "Very relaxed",
-    slightly_stressful: "Slightly stressful",
-    quite_stressful: "Quite stressful",
-    extremely_stressful: "Extremely stressful",
-  },
-  socialTime: {
-    rarely: "Rarely",
-    sometimes: "Sometimes",
-    often: "Often",
-    very_often: "Very often",
-  },
-};
 
 export default function QuizPage() {
   const [step, setStep] = useState(0);
@@ -198,6 +182,60 @@ export default function QuizPage() {
   );
 }
 
+function EmochiRing({ name, color, tint, level, isTop }) {
+  const radius = 32;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference * (1 - level / 10);
+
+  return (
+    <div className="flex shrink-0 flex-col items-center">
+      <div className="relative h-20 w-20 sm:h-28 sm:w-28">
+        {isTop && (
+          <span className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 text-base sm:text-xl">
+            👑
+          </span>
+        )}
+        <svg viewBox="0 0 80 80" className="h-full w-full -rotate-90">
+          <circle cx="40" cy="40" r={radius} strokeWidth="8" fill="none" stroke="#F1F1F1" />
+          <circle
+            cx="40"
+            cy="40"
+            r={radius}
+            strokeWidth="8"
+            fill="none"
+            stroke={color}
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            className="transition-all duration-700 ease-out"
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div
+            className="flex h-11 w-11 items-center justify-center rounded-full sm:h-16 sm:w-16"
+            style={{ backgroundColor: tint }}
+          >
+            <Image
+              src={`/agents/${name}.png`}
+              alt={name}
+              width={44}
+              height={44}
+              className="mix-blend-multiply"
+            />
+          </div>
+        </div>
+        <span
+          className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-extrabold text-white shadow-sm sm:px-2.5 sm:text-xs"
+          style={{ backgroundColor: color }}
+        >
+          Lv {level}
+        </span>
+      </div>
+      <span className="mt-3 text-xs font-bold text-zinc-600 sm:text-sm">{name}</span>
+    </div>
+  );
+}
+
 function MochiProgress({ step, total, color }) {
   const percent = Math.round(((step + 1) / total) * 100);
   return (
@@ -219,17 +257,6 @@ function MochiProgress({ step, total, color }) {
 }
 
 function QuizResults({ result, onRetake }) {
-  const lifestyleChips = [
-    { emoji: "🛌", label: "Sleep", value: RESULT_LABELS.sleep[result.sleep], mascot: MASCOTS.sleep },
-    { emoji: "😅", label: "Stress level", value: RESULT_LABELS.stress[result.stress], mascot: MASCOTS.stress },
-    {
-      emoji: "🫂",
-      label: "Time with friends/family",
-      value: RESULT_LABELS.socialTime[result.socialTime],
-      mascot: MASCOTS.socialTime,
-    },
-  ];
-
   const scores = computeEmochiScores(result);
   const leaderboard = Object.entries(scores)
     .map(([role, score]) => ({ role, score, ...CHARACTERS[role] }))
@@ -238,105 +265,29 @@ function QuizResults({ result, onRetake }) {
 
   return (
     <div
-      className="flex min-h-screen flex-col items-center px-4 py-12 font-[family-name:var(--font-baloo)] sm:py-16"
+      className="flex min-h-screen w-full flex-col items-center justify-center px-4 py-12 font-[family-name:var(--font-baloo)] sm:py-16"
       style={{
         background:
           "radial-gradient(circle at 20% 10%, #FFF3D3 0%, transparent 45%), radial-gradient(circle at 80% 90%, #DCEBFB 0%, transparent 45%), #FFF8EC",
       }}
     >
-      <div className="animate-pop-in w-full max-w-lg text-center">
-        <p className="text-4xl">🎉</p>
-        <p className="mt-1 text-sm font-bold uppercase tracking-widest text-[#C9A857]">
-          Achievement unlocked
-        </p>
-
-        <div className="mt-4 inline-block rounded-[2rem] bg-white px-10 py-6 shadow-[0_8px_0_0_rgba(0,0,0,0.06)]">
-          <h1 className="bg-gradient-to-r from-[#FFC53D] via-[#FF6B4A] to-[#4A90D9] bg-clip-text text-6xl font-extrabold tracking-tight text-transparent">
-            {result.mbti}
-          </h1>
-        </div>
-
-        <div className="mt-8">
-          <p className="text-left text-sm font-bold uppercase tracking-wide text-zinc-400">
+      <div className="animate-pop-in w-full max-w-5xl text-center">
+        <div className="mt-2">
+          <p className="text-center text-sm font-bold uppercase tracking-wide text-zinc-400">
             Your Emochi Squad
           </p>
-          <div className="mt-3 rounded-[2rem] bg-white p-5 pb-4 shadow-sm">
-            <div className="flex items-end justify-between gap-1.5 sm:gap-3">
-              {leaderboard.map(({ role, score, color }) => (
-                <div key={role} className="flex flex-1 flex-col items-center">
-                  <div className="relative w-full" style={{ height: 160 }}>
-                    <span
-                      className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-extrabold"
-                      style={{ bottom: `calc(${score}% + 6px)`, color }}
-                    >
-                      {score === topScore ? "👑 " : ""}
-                      {score}
-                    </span>
-                    <div
-                      className="absolute bottom-0 mx-auto w-7 rounded-t-lg transition-all duration-500 sm:w-9"
-                      style={{
-                        left: "50%",
-                        transform: "translateX(-50%)",
-                        height: `${score}%`,
-                        backgroundColor: color,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="h-px w-full bg-zinc-100" />
-
-            <div className="mt-3 flex justify-between gap-1.5 sm:gap-3">
-              {leaderboard.map(({ role, name, tint }) => (
-                <div key={role} className="flex flex-1 flex-col items-center gap-1">
-                  <div
-                    className="flex h-9 w-9 items-center justify-center rounded-full sm:h-10 sm:w-10"
-                    style={{ backgroundColor: tint }}
-                  >
-                    <Image
-                      src={`/agents/${name}.png`}
-                      alt={name}
-                      width={30}
-                      height={30}
-                      className="mix-blend-multiply"
-                    />
-                  </div>
-                  <span className="text-[10px] font-bold text-zinc-600 sm:text-[11px]">
-                    {name}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6 space-y-3">
-          {lifestyleChips.map((chip) => (
-            <div
-              key={chip.label}
-              className="flex items-center gap-3 rounded-2xl bg-white p-3 pr-4 text-left shadow-sm"
-            >
-              <div
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg"
-                style={{ backgroundColor: chip.mascot.tint }}
-              >
-                {chip.emoji}
-              </div>
-              <div className="flex-1">
-                <p className="text-xs font-semibold text-zinc-400">{chip.label}</p>
-                <p className="text-sm font-bold text-zinc-700">{chip.value}</p>
-              </div>
-              <Image
-                src={`/agents/${chip.mascot.name}.png`}
-                alt={chip.mascot.name}
-                width={36}
-                height={36}
-                className="mix-blend-multiply"
+          <div className="mt-4 flex flex-wrap items-start justify-center gap-x-4 gap-y-6 sm:gap-x-6">
+            {leaderboard.map(({ role, score, name, color, tint }) => (
+              <EmochiRing
+                key={role}
+                name={name}
+                color={color}
+                tint={tint}
+                level={scoreToLevel(score)}
+                isTop={score === topScore}
               />
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         <button

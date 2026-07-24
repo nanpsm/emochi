@@ -2,10 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { auth, signIn, signOut } from "@/auth";
-
-export default async function Home() {
-  const session = await auth();
+import { useSession, signIn, signOut } from "next-auth/react";
 
 const MOODLINGS = [
   { key: "cheer",  color: "#FFC53D", name: "Cheer",  quote: "What could go right?",           file: "Cheer.png",  animDelay: "0s"    },
@@ -26,6 +23,7 @@ const NAV_ITEMS = [
 ];
 
 export default function Home() {
+  const { data: session } = useSession();
   const [selected, setSelected]   = useState(null);
   const [coins]                   = useState(1410);
   const [gems]                    = useState(33);
@@ -152,12 +150,16 @@ export default function Home() {
           padding: "14px 20px 0", flexShrink: 0, position: "relative", zIndex: 10,
         }}>
           {/* Left: player card */}
-          <div style={{
-            display: "flex", alignItems: "center", gap: 10,
-            background: "rgba(0,0,0,0.45)", borderRadius: 50,
-            padding: "6px 14px 6px 6px",
-            border: "2px solid rgba(255,255,255,0.2)",
-          }}>
+          <div
+            onClick={() => (session ? signOut() : signIn("microsoft-entra-id"))}
+            style={{
+              display: "flex", alignItems: "center", gap: 10,
+              background: "rgba(0,0,0,0.45)", borderRadius: 50,
+              padding: "6px 14px 6px 6px",
+              border: "2px solid rgba(255,255,255,0.2)",
+              cursor: "pointer",
+            }}
+          >
             <div style={{
               width: 46, height: 46, borderRadius: "50%",
               background: "linear-gradient(135deg,#ffc53d,#f97316)",
@@ -165,13 +167,17 @@ export default function Home() {
               fontSize: "1.6rem", border: "2px solid #ffc53d",
             }}>🦁</div>
             <div>
-              <div style={{ color: "#fff", fontWeight: 800, fontSize: "0.9rem" }}>You</div>
-              <div style={{ fontSize: "0.7rem", color: "#aaa" }}>Level 1</div>
+              <div style={{ color: "#fff", fontWeight: 800, fontSize: "0.9rem" }}>
+                {session?.user?.name ?? session?.user?.email ?? "Sign in"}
+              </div>
+              <div style={{ fontSize: "0.7rem", color: "#aaa" }}>
+                {session ? "Level 1" : "Tap to continue with Microsoft"}
+              </div>
               <div style={{
                 width: 90, height: 5, background: "rgba(255,255,255,0.15)",
                 borderRadius: 3, marginTop: 2,
               }}>
-                <div style={{ width: "40%", height: "100%", background: "#ffc53d", borderRadius: 3 }} />
+                <div style={{ width: session ? "40%" : "0%", height: "100%", background: "#ffc53d", borderRadius: 3 }} />
               </div>
             </div>
           </div>

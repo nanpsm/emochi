@@ -8,6 +8,6 @@ export async function GET() {
     return NextResponse.json(result.recordset);
   } catch (error) {
     console.error("Failed to fetch interests:", error);
-    return NextResponse.json({ error: "Failed to fetch interests" }, { status: 500 });
+    return NextResponse.json({ error: error?.message ?? String(error), code: error?.code, hasDbUrl: !!process.env.DATABASE_URL }, { status: 500 });
   }
 }

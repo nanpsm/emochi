@@ -3,429 +3,630 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 
-const MOODLINGS = [
-  { key: "cheer",  color: "#FFC53D", name: "Cheer",  quote: "What could go right?",           file: "Cheer.png",  animDelay: "0s"    },
-  { key: "fear",   color: "#A78BFA", name: "Fear",   quote: "Is it safe?",                    file: "Fear.png",   animDelay: "0.3s"  },
-  { key: "buzzy",  color: "#FF6B4A", name: "Buzzy",  quote: "Can we handle this now?",        file: "Buzzy.png",  animDelay: "0.6s"  },
-  { key: "tear",   color: "#4A90D9", name: "Tear",   quote: "How do we really feel?",         file: "Tear.png",   animDelay: "0.9s"  },
-  { key: "zen",    color: "#5FD4C4", name: "Zen",    quote: "Let's slow down.",               file: "Zen.png",    animDelay: "1.2s"  },
-  { key: "bubble", color: "#F97316", name: "Bubble", quote: "Who can we do this with?",       file: "Bubble.png", animDelay: "1.5s"  },
-  { key: "dozy",   color: "#6C7A96", name: "Dozy",   quote: "Do we need a break?",            file: "Dozy.png",   animDelay: "1.8s"  },
-  { key: "wisey",  color: "#C9A857", name: "Wisey",  quote: "What's the most balanced step?", file: "Wisey.png",  animDelay: "2.1s"  },
+const INK = "#1a1a2e";
+
+const CHARS = [
+  {
+    id: "cheer", name: "Cheer", color: "#FFC53D", file: "Cheer.png", isMain: false, imgH: 270, level: 4,
+    role: "Joy & Enthusiasm",
+    desc: "Your inner cheerleader. Cheer finds the bright side in any situation and keeps your spirits high when things feel heavy.",
+    traits: ["Boosts motivation", "Celebrates every win", "Spreads positive energy", "Keeps you moving forward"],
+  },
+  {
+    id: "fear", name: "Fear", color: "#A78BFA", file: "Fear.png", isMain: false, imgH: 270, level: 3,
+    role: "Caution & Awareness",
+    desc: "Fear isn't the enemy — they're your early-warning system. They spot danger before it arrives and keep you safe.",
+    traits: ["Risk detection", "Protective instincts", "Heightens awareness", "Prepares for the unexpected"],
+  },
+  {
+    id: "buzzy", name: "Buzzy", color: "#FF6B4A", file: "Buzzy.png", isMain: false, imgH: 270, level: 5,
+    role: "Anger & Drive",
+    desc: "Buzzy channels frustration into fuel. When things feel unfair, Buzzy steps up to set boundaries and push through.",
+    traits: ["Sets clear limits", "Turns frustration into action", "Fights for what's right", "Raw, unstoppable energy"],
+  },
+  {
+    id: "tear", name: "Tear", color: "#4A90D9", file: "Tear.png", isMain: false, imgH: 270, level: 3,
+    role: "Sadness & Empathy",
+    desc: "Tear helps you sit with what hurts. They process grief with grace and connect deeply to the feelings of others.",
+    traits: ["Deep emotional processing", "Compassion for others", "Slows down to reflect", "Healing through feeling"],
+  },
+  {
+    id: "wisey", name: "Wisey", color: "#C9A857", file: "Wisey.png", isMain: true, imgH: 360, level: 8, noLevel: true,
+    role: "Wisdom & Balance",
+    desc: "Wisey is your inner guide — the voice that weighs all sides before speaking. They keep the whole crew in harmony.",
+    traits: ["Calm under pressure", "Sees the bigger picture", "Mediates conflicts", "Leads with reason and heart"],
+  },
+  {
+    id: "zen", name: "Zen", color: "#5FD4C4", file: "Zen.png", isMain: false, imgH: 270, level: 6,
+    role: "Peace & Mindfulness",
+    desc: "Zen brings stillness to the storm. In moments of chaos, they guide you back to your breath and the present moment.",
+    traits: ["Grounds racing thoughts", "Slows the spiral", "Finds calm in chaos", "Present-moment awareness"],
+  },
+  {
+    id: "bubble", name: "Bubble", color: "#F97316", file: "Bubble.png", isMain: false, imgH: 270, level: 4,
+    role: "Excitement & Creativity",
+    desc: "Bubble overflows with ideas and curiosity. They turn ordinary moments into adventures and spark creative breakthroughs.",
+    traits: ["Endless curiosity", "Creative problem-solving", "Contagious excitement", "Sees magic in the mundane"],
+  },
+  {
+    id: "dozy", name: "Dozy", color: "#6C7A96", file: "Dozy.png", isMain: false, imgH: 270, level: 2,
+    role: "Rest & Recovery",
+    desc: "Dozy knows that rest is not laziness — it's repair. They remind you to recharge before you burn out completely.",
+    traits: ["Prioritizes recovery", "Signals exhaustion early", "Slows the pace", "Protects your energy"],
+  },
 ];
 
-const NAV_ITEMS = [
-  { icon: "📋", label: "Missions",    badge: null },
-  { icon: "🎪", label: "Events",      badge: "!"  },
-  { icon: "🏆", label: "Ranked",      badge: "!"  },
-  { icon: "🥇", label: "Tournaments", badge: "!"  },
+const STATS = [
+  { icon: "🌙", label: "Sleep", short: "7.5h", pct: 94, color: "#8b5cf6" },
+  { icon: "💼", label: "Work",  short: "6h",   pct: 79, color: "#f59e0b" },
+  { icon: "😊", label: "Mood",  short: "😊",   pct: 88, color: "#22c55e" },
+];
+
+const FRIENDS = [
+  { id: 1, name: "Pailin", emoji: "🐱", bg: "#6bd6c9", online: true,  mood: "😄 Great"  },
+  { id: 2, name: "Min",    emoji: "🐰", bg: "#ffb15e", online: true,  mood: "😌 Calm"   },
+  { id: 3, name: "Hein",   emoji: "🐶", bg: "#5ec8f7", online: true,  mood: "😴 Tired"  },
+  { id: 4, name: "Sofia",  emoji: "🦊", bg: "#A78BFA", online: false, mood: "😢 Sad"    },
+  { id: 5, name: "James",  emoji: "🐸", bg: "#5FD4C4", online: false, mood: "😐 Meh"    },
 ];
 
 export default function Home() {
-  const [selected, setSelected] = useState(null);
-  const [coins]                 = useState(1410);
-  const [gems]                  = useState(33);
-  const [stars, setStars]       = useState([]);
+  const [scale, setScale]         = useState(1);
+  const [friendsOpen, setFriends] = useState(false);
+  const [hovChar, setHovChar]     = useState(null);
+  const [charPopup, setCharPopup] = useState(null);
+  const [profileOpen, setProfile] = useState(false);
+  const [avatar, setAvatar]       = useState("wisey");
+  const [userName, setUserName]   = useState("You");
+  const [editName, setEditName]   = useState("You");
+  const [editAvatar, setEditAvatar] = useState("wisey");
 
   useEffect(() => {
-    setStars(
-      Array.from({ length: 30 }, (_, i) => ({
-        id: i,
-        x: Math.random() * 100,
-        y: Math.random() * 60,
-        size: Math.random() * 4 + 2,
-        delay: Math.random() * 3,
-        dur: Math.random() * 2 + 2,
-      }))
-    );
+    const upd = () =>
+      setScale(Math.min(window.innerWidth / 1600, window.innerHeight / 900));
+    upd();
+    window.addEventListener("resize", upd);
+    return () => window.removeEventListener("resize", upd);
   }, []);
 
-  const active = selected !== null ? MOODLINGS[selected] : null;
+  const currentChar = CHARS.find(c => c.id === avatar) ?? CHARS[4];
+  const PANEL_W = 248;
+
+  function openProfile() {
+    setEditName(userName);
+    setEditAvatar(avatar);
+    setProfile(true);
+  }
+
+  function saveProfile() {
+    setUserName(editName.trim() || "You");
+    setAvatar(editAvatar);
+    setProfile(false);
+  }
 
   return (
     <>
       <style>{`
-        @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50%       { transform: translateY(-14px); }
+        @keyframes debateGlow {
+          0%,100%{box-shadow:0 12px 36px rgba(26,26,46,.22),0 0 0 0 rgba(201,168,87,0)}
+          50%{box-shadow:0 16px 44px rgba(26,26,46,.3),0 0 28px 6px rgba(201,168,87,.18)}
         }
-        @keyframes floatSlow {
-          0%, 100% { transform: translateY(0px) scale(1); }
-          50%       { transform: translateY(-8px) scale(1.03); }
-        }
-        @keyframes twinkle {
-          0%, 100% { opacity: 0.2; transform: scale(1); }
-          50%       { opacity: 1;   transform: scale(1.4); }
-        }
-        @keyframes pulse-ring {
-          0%   { transform: scale(0.9); opacity: 0.8; }
-          70%  { transform: scale(1.3); opacity: 0;   }
-          100% { transform: scale(1.3); opacity: 0;   }
-        }
-        @keyframes badge-pop {
-          0%, 100% { transform: scale(1); }
-          50%       { transform: scale(1.2); }
-        }
-        @keyframes ground-glow {
-          0%, 100% { opacity: 0.4; transform: scaleX(1); }
-          50%       { opacity: 0.7; transform: scaleX(1.08); }
-        }
-        @keyframes cloud-drift {
-          0%   { transform: translateX(0); }
-          100% { transform: translateX(60px); }
-        }
-        @keyframes slide-up {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .char-float { animation: float 3s ease-in-out infinite; }
-        .btn-hover:hover { transform: scale(1.06) translateY(-2px); filter: brightness(1.1); }
-        .btn-hover { transition: transform .15s, filter .15s; }
-        .play-btn:hover { transform: scale(1.08) translateY(-3px); filter: brightness(1.15); box-shadow: 0 12px 40px rgba(255,197,61,0.7) !important; }
-        .play-btn { transition: transform .18s, filter .18s, box-shadow .18s; }
-        .char-card:hover .char-name-tag { opacity: 1 !important; transform: translateX(-50%) translateY(0) !important; }
-        .char-card:hover { filter: brightness(1.08) drop-shadow(0 0 16px rgba(255,255,255,0.4)); }
-        .char-card { transition: filter .2s; cursor: pointer; }
+        .btn-debate { animation: debateGlow 3.5s ease-in-out infinite; transition: transform .2s, box-shadow .2s; }
+        .btn-debate:hover { transform: translateY(-3px) scale(1.025); }
+        .char-node { transition: transform .22s cubic-bezier(.34,1.56,.64,1), filter .2s; cursor: pointer; }
+        .char-node:hover { filter: drop-shadow(0 0 18px rgba(0,0,0,.13)) brightness(1.04); }
+        .friend-row:hover { background: #f3f3f3 !important; }
+        .avatar-pill:hover { filter: brightness(.96); }
+        .picker-char:hover > div { outline: 2px solid #ccc; }
+        .modal-overlay { animation: fadeIn .16s ease; }
+        .modal-card   { animation: slideUp .2s cubic-bezier(.34,1.56,.64,1); }
+        @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
+        @keyframes slideUp { from{transform:translateY(24px) scale(.97);opacity:0} to{transform:none;opacity:1} }
+        .friends-panel { transition: transform .28s cubic-bezier(.4,0,.2,1), opacity .28s; }
       `}</style>
 
       <div style={{
-        width: "100vw", minHeight: "100vh",
-        background: "linear-gradient(180deg, #3a1878 0%, #6b2fa0 25%, #c0568a 55%, #f4914a 80%, #f5c26b 100%)",
-        position: "relative", overflow: "hidden",
-        fontFamily: "'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-        display: "flex", flexDirection: "column",
+        position: "fixed", inset: 0, background: "linear-gradient(160deg,#fffdf0 0%,#fff8d6 60%,#fffef5 100%)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontFamily: "var(--font-baloo), 'Baloo 2', sans-serif",
       }}>
-
-        {/* Starfield */}
-        {stars.map(s => (
-          <div key={s.id} style={{
-            position: "absolute", left: `${s.x}%`, top: `${s.y}%`,
-            width: s.size, height: s.size, borderRadius: "50%",
-            background: "#fff",
-            animation: `twinkle ${s.dur}s ${s.delay}s ease-in-out infinite`,
-            pointerEvents: "none",
-          }} />
-        ))}
-
-        {/* Moon */}
         <div style={{
-          position: "absolute", top: "4%", left: "50%", transform: "translateX(-50%)",
-          width: 160, height: 160, borderRadius: "50%",
-          background: "radial-gradient(circle at 40% 35%, #e8eaf0, #b0b8d0)",
-          boxShadow: "0 0 60px 20px rgba(200,210,255,0.35)",
-          animation: "floatSlow 8s ease-in-out infinite",
-        }} />
-
-        {/* Clouds */}
-        {[{ l: "5%", t: "22%" }, { l: "75%", t: "18%" }].map((c, i) => (
-          <div key={i} style={{
-            position: "absolute", left: c.l, top: c.t,
-            width: 120, height: 50, borderRadius: 50,
-            background: "rgba(255,255,255,0.18)", opacity: 0.25,
-            animation: `cloud-drift ${12 + i * 4}s ease-in-out infinite alternate`,
-          }} />
-        ))}
-
-        {/* Ground glow */}
-        <div style={{
-          position: "absolute", bottom: "12%", left: "50%", transform: "translateX(-50%)",
-          width: "85%", height: 60, borderRadius: "50%",
-          background: "rgba(255,180,80,0.18)", filter: "blur(18px)",
-          animation: "ground-glow 4s ease-in-out infinite",
-        }} />
-
-        {/* ── TOP BAR ── */}
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "14px 20px 0", flexShrink: 0, position: "relative", zIndex: 10,
+          position: "relative", width: 1600, height: 900, flex: "none",
+          transform: `scale(${scale})`, transformOrigin: "center center",
+          overflow: "hidden", borderRadius: 20, background: "linear-gradient(160deg,#fffdf0 0%,#fff8d6 60%,#fffef5 100%)",
+          boxShadow: "0 8px 40px rgba(0,0,0,.08)",
         }}>
-          {/* Player card */}
+
+          {/* ══ TOP NAV BAR ══ */}
           <div style={{
-            display: "flex", alignItems: "center", gap: 10,
-            background: "rgba(0,0,0,0.45)", borderRadius: 50,
-            padding: "6px 14px 6px 6px",
-            border: "2px solid rgba(255,255,255,0.2)",
+            position: "absolute", top: 0, left: 0, right: 0, height: 80,
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "0 36px", borderBottom: "1px solid #f0f0f0", zIndex: 30,
+            background: "rgba(255,253,240,.92)", backdropFilter: "blur(8px)",
           }}>
-            <div style={{
-              width: 46, height: 46, borderRadius: "50%",
-              background: "linear-gradient(135deg,#ffc53d,#f97316)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: "1.6rem", border: "2px solid #ffc53d",
-            }}>🦁</div>
-            <div>
-              <div style={{ color: "#fff", fontWeight: 800, fontSize: "0.9rem" }}>You</div>
-              <div style={{ fontSize: "0.7rem", color: "#aaa" }}>Level 1</div>
-              <div style={{ width: 90, height: 5, background: "rgba(255,255,255,0.15)", borderRadius: 3, marginTop: 2 }}>
-                <div style={{ width: "40%", height: "100%", background: "#ffc53d", borderRadius: 3 }} />
-              </div>
+            {/* Left: daily donut stats */}
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              {STATS.map(s => <DonutStat key={s.label} stat={s} />)}
+            </div>
+
+            {/* Center: Logo */}
+            <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: .5, color: INK, position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
+              <span style={{ color: "#ffb703" }}>Emo</span>chi
+            </div>
+
+            {/* Right: avatar pill + settings + friends toggle */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {/* Avatar pill */}
+              <button
+                className="avatar-pill"
+                onClick={openProfile}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "6px 14px 6px 6px", borderRadius: 40,
+                  background: "#f8f8f8", border: "1.5px solid #ececec",
+                  cursor: "pointer", transition: "filter .15s",
+                }}
+              >
+                <div style={{
+                  width: 44, height: 44, borderRadius: "50%",
+                  background: currentChar.color + "22",
+                  border: `2px solid ${currentChar.color}`,
+                  position: "relative", overflow: "hidden", flexShrink: 0,
+                  boxShadow: `0 2px 8px ${currentChar.color}44`,
+                }}>
+                  <Image src={`/agents/${currentChar.file}`} alt={currentChar.name} fill style={{ objectFit: "cover" }} />
+                </div>
+                <div style={{ textAlign: "left" }}>
+                  <div style={{ color: INK, fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>{userName}</div>
+                  <div style={{ color: "#bbb", fontSize: 11 }}>Lv. 1  ·  edit profile</div>
+                </div>
+              </button>
+
+              {/* Settings */}
+              <div style={{
+                width: 40, height: 40, borderRadius: "50%",
+                background: "#f5f5f5", border: "1px solid #e8e8e8",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 16, cursor: "pointer",
+              }}>⚙️</div>
+
+              {/* Friends toggle */}
+              <button
+                onClick={() => setFriends(o => !o)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 14px", borderRadius: 30,
+                  background: friendsOpen ? INK : "#f5f5f5",
+                  border: "1px solid #e8e8e8",
+                  cursor: "pointer", transition: "background .2s",
+                }}
+              >
+                <span style={{ fontSize: 15 }}>👥</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: friendsOpen ? "#fff" : "#555" }}>
+                  Friends
+                </span>
+                {FRIENDS.filter(f => f.online).length > 0 && (
+                  <span style={{
+                    width: 18, height: 18, borderRadius: "50%",
+                    background: "#22c55e", color: "#fff",
+                    fontSize: 9, fontWeight: 800,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>{FRIENDS.filter(f => f.online).length}</span>
+                )}
+              </button>
             </div>
           </div>
 
-          {/* Logo */}
-          <div style={{
-            position: "absolute", left: "50%", transform: "translateX(-50%)",
-            fontWeight: 900, fontSize: "1.8rem",
-            textShadow: "0 3px 12px rgba(0,0,0,0.5)", color: "#fff",
-          }}>
-            <span style={{ color: "#ffc53d" }}>Emo</span>chi
-          </div>
-
-          {/* Currency */}
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <CurrencyChip icon="🪙" value={coins} color="#ffc53d" />
-            <CurrencyChip icon="💎" value={gems}  color="#5FD4C4" />
-            <button style={{
-              width: 38, height: 38, borderRadius: "50%",
-              background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.25)",
-              color: "#fff", fontSize: "1.1rem", cursor: "pointer",
-            }}>⚙️</button>
-          </div>
-        </div>
-
-        {/* ── SIDE LEFT ── */}
-        <div style={{
-          position: "absolute", left: 16, top: "50%", transform: "translateY(-55%)",
-          display: "flex", flexDirection: "column", gap: 14, zIndex: 10,
-        }}>
-          <SideBtn icon="🎁" label="Free Prizes" color="#ffc53d" />
-          <SideBtn icon="🎨" label="Customize"   color="#A78BFA" />
-        </div>
-
-        {/* ── SIDE RIGHT ── */}
-        <div style={{
-          position: "absolute", right: 16, top: "50%", transform: "translateY(-55%)",
-          display: "flex", flexDirection: "column", gap: 14, zIndex: 10,
-        }}>
-          <SideBtn icon="👥" label="Friends" color="#5FD4C4" />
-          <SideBtn icon="🎉" label="Party"   color="#F97316" badge />
-        </div>
-
-        {/* ── CHARACTERS STAGE ── */}
-        <div style={{
-          flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center",
-          padding: "0 100px", position: "relative", zIndex: 5,
-          paddingBottom: "calc(12% + 60px)",
-        }}>
-          {MOODLINGS.map((m, i) => (
-            <CharacterFigure
-              key={m.key}
-              moodling={m}
-              index={i}
-              total={MOODLINGS.length}
-              isSelected={selected === i}
-              onClick={() => setSelected(selected === i ? null : i)}
-            />
-          ))}
-        </div>
-
-        {/* Tooltip */}
-        {active && (
-          <div style={{
-            position: "absolute", left: "50%", top: "58%",
-            transform: "translateX(-50%)",
-            background: "rgba(0,0,0,0.75)",
-            border: `2px solid ${active.color}`,
-            borderRadius: 16, padding: "10px 20px",
-            color: "#fff", textAlign: "center", zIndex: 20,
-            backdropFilter: "blur(8px)",
-            animation: "slide-up .2s ease",
-          }}>
-            <div style={{ fontWeight: 800, fontSize: "1.05rem", color: active.color }}>{active.name}</div>
-            <div style={{ fontSize: "0.85rem", opacity: 0.85, marginTop: 2 }}>&ldquo;{active.quote}&rdquo;</div>
-          </div>
-        )}
-
-        {/* ── BOTTOM BAR ── */}
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          gap: 10, padding: "10px 20px 16px",
-          position: "relative", zIndex: 10, flexShrink: 0, flexWrap: "wrap",
-        }}>
-          {/* Pass card */}
-          <div style={{
-            background: "linear-gradient(135deg,#7a5a00,#b88a00)",
-            border: "2px solid #ffc53d", borderRadius: 16,
-            padding: "8px 14px", display: "flex", alignItems: "center", gap: 10,
-            minWidth: 160,
-          }}>
-            <span style={{ fontSize: "1.5rem" }}>⭐</span>
-            <div>
-              <div style={{ color: "#ffc53d", fontWeight: 800, fontSize: "0.75rem" }}>EMOCHI PASS</div>
-              <div style={{ color: "#fff", fontSize: "0.7rem" }}>0 / 800</div>
-              <div style={{ width: 90, height: 4, background: "rgba(255,255,255,0.2)", borderRadius: 2, marginTop: 2 }}>
-                <div style={{ width: "0%", height: "100%", background: "#ffc53d", borderRadius: 2 }} />
+          {/* ══ FRIENDS PANEL (hideable) ══ */}
+          <div
+            className="friends-panel"
+            style={{
+              position: "absolute", right: 0, top: 80, bottom: 0,
+              width: PANEL_W,
+              background: "#fafafa", borderLeft: "1px solid #f0f0f0",
+              display: "flex", flexDirection: "column", zIndex: 20,
+              transform: friendsOpen ? "translateX(0)" : `translateX(${PANEL_W}px)`,
+              opacity: friendsOpen ? 1 : 0,
+              pointerEvents: friendsOpen ? "auto" : "none",
+            }}
+          >
+            <div style={{ padding: "18px 20px 12px", borderBottom: "1px solid #f0f0f0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: INK }}>Friends</div>
+                <button onClick={() => setFriends(false)} style={{
+                  width: 28, height: 28, borderRadius: "50%",
+                  background: "#f0f0f0", border: "none", cursor: "pointer",
+                  fontSize: 13, color: "#777",
+                }}>✕</button>
               </div>
+              <div style={{ color: "#bbb", fontSize: 12, marginTop: 2 }}>{FRIENDS.filter(f => f.online).length} online · {FRIENDS.length} total</div>
+            </div>
+
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              <div style={{ padding: "10px 0" }}>
+                <div style={{ padding: "4px 20px 6px", color: "#bbb", fontSize: 10, fontWeight: 700, letterSpacing: 1.5 }}>ONLINE</div>
+                {FRIENDS.filter(f => f.online).map(f => <FriendRow key={f.id} friend={f} />)}
+              </div>
+              <div style={{ padding: "4px 0" }}>
+                <div style={{ padding: "4px 20px 6px", color: "#bbb", fontSize: 10, fontWeight: 700, letterSpacing: 1.5 }}>OFFLINE</div>
+                {FRIENDS.filter(f => !f.online).map(f => <FriendRow key={f.id} friend={f} offline />)}
+              </div>
+            </div>
+
+            <div style={{ padding: "14px 20px", borderTop: "1px solid #f0f0f0" }}>
+              <button style={{
+                width: "100%", padding: "10px 0", borderRadius: 30,
+                background: "linear-gradient(90deg,#ff8a3d,#ff5e7a)",
+                border: "none", cursor: "pointer",
+                color: "#fff", fontWeight: 700, fontSize: 13,
+              }}>+ Add Friend</button>
             </div>
           </div>
 
-          {NAV_ITEMS.map(n => (
-            <NavBtn key={n.label} icon={n.icon} label={n.label} badge={n.badge} />
-          ))}
-
-          <button className="play-btn" style={{
-            background: "linear-gradient(135deg,#ffc53d,#f97316)",
-            border: "3px solid rgba(255,255,255,0.4)",
-            borderRadius: 18, padding: "12px 44px",
-            fontWeight: 900, fontSize: "1.5rem",
-            color: "#3a2a00", cursor: "pointer",
-            boxShadow: "0 8px 28px rgba(255,197,61,0.55)",
-            letterSpacing: 2,
+          {/* ══ CHARACTERS GROUP ══ */}
+          <div style={{
+            position: "absolute",
+            left: 0,
+            right: friendsOpen ? PANEL_W : 0,
+            bottom: 160,
+            display: "flex", alignItems: "flex-end", justifyContent: "center",
+            transition: "right .28s cubic-bezier(.4,0,.2,1)",
           }}>
-            PLAY
-          </button>
+            {CHARS.map(c => (
+              <CharNode
+                key={c.id}
+                char={c}
+                hovered={hovChar === c.id}
+                onEnter={() => setHovChar(c.id)}
+                onLeave={() => setHovChar(null)}
+                onClick={() => setCharPopup(c)}
+              />
+            ))}
+          </div>
+
+          {/* ══ DEBATE BUTTON ══ */}
+          <div style={{
+            position: "absolute", left: 0, right: friendsOpen ? PANEL_W : 0,
+            bottom: 36, display: "flex", justifyContent: "center",
+            transition: "right .28s cubic-bezier(.4,0,.2,1)",
+          }}>
+            <button className="btn-debate" style={{
+              display: "flex", alignItems: "center", gap: 14,
+              padding: "17px 52px", borderRadius: 16,
+              background: "linear-gradient(135deg,#1a1a2e 0%,#2e1f5e 100%)",
+              border: "1.5px solid rgba(201,168,87,.28)",
+              cursor: "pointer",
+            }}>
+              <span style={{ fontSize: 18 }}>⚖️</span>
+              <span style={{
+                background: "linear-gradient(90deg,#f7d774,#c9a857)",
+                WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+                fontWeight: 800, fontSize: 20, letterSpacing: 4,
+              }}>DEBATE</span>
+            </button>
+          </div>
+
+          {/* ══ CHARACTER POPUP ══ */}
+          {charPopup && (
+            <div
+              className="modal-overlay"
+              onClick={() => setCharPopup(null)}
+              style={{
+                position: "absolute", inset: 0,
+                background: "rgba(0,0,0,.35)", zIndex: 50,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <div
+                className="modal-card"
+                onClick={e => e.stopPropagation()}
+                style={{
+                  width: 620, background: "#fff", borderRadius: 28,
+                  boxShadow: "0 24px 60px rgba(0,0,0,.18)",
+                  overflow: "hidden", display: "flex",
+                }}
+              >
+                {/* Left: character image */}
+                <div style={{
+                  width: 220, flexShrink: 0,
+                  background: `linear-gradient(160deg,${charPopup.color}22,${charPopup.color}44)`,
+                  display: "flex", alignItems: "flex-end", justifyContent: "center",
+                  padding: "0 0 0 0",
+                  position: "relative",
+                }}>
+                  <div style={{ position: "relative", width: 180, height: 240 }}>
+                    <Image src={`/agents/${charPopup.file}`} alt={charPopup.name} fill style={{ objectFit: "contain" }} />
+                  </div>
+                </div>
+
+                {/* Right: info */}
+                <div style={{ flex: 1, padding: "28px 28px 24px" }}>
+                  <button onClick={() => setCharPopup(null)} style={{
+                    float: "right", width: 30, height: 30, borderRadius: "50%",
+                    background: "#f4f4f4", border: "none", cursor: "pointer",
+                    fontSize: 13, color: "#777",
+                  }}>✕</button>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
+                    <div style={{ fontSize: 28, fontWeight: 800, color: INK }}>{charPopup.name}</div>
+                    {!charPopup.noLevel && (
+                      <div style={{
+                        padding: "3px 12px", borderRadius: 30,
+                        background: charPopup.color + "22", color: charPopup.color,
+                        fontSize: 12, fontWeight: 700,
+                      }}>Lv. {charPopup.level}</div>
+                    )}
+                  </div>
+
+                  <div style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "4px 12px", borderRadius: 20,
+                    background: charPopup.color, color: "#fff",
+                    fontSize: 11, fontWeight: 700, marginBottom: 14,
+                  }}>
+                    ✦ {charPopup.role}
+                  </div>
+
+                  <div style={{ color: "#555", fontSize: 13, lineHeight: 1.6, marginBottom: 18 }}>
+                    {charPopup.desc}
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {charPopup.traits.map((t, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{
+                          width: 8, height: 8, borderRadius: "50%",
+                          background: charPopup.color, flexShrink: 0,
+                        }} />
+                        <span style={{ color: INK, fontSize: 13, fontWeight: 600 }}>{t}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* XP bar — hidden for Wisey */}
+                  {!charPopup.noLevel && (
+                    <div style={{ marginTop: 22 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ color: "#aaa", fontSize: 11, fontWeight: 600 }}>XP Progress</span>
+                        <span style={{ color: "#aaa", fontSize: 11, fontWeight: 600 }}>
+                          {charPopup.level * 120} / {(charPopup.level + 1) * 120}
+                        </span>
+                      </div>
+                      <div style={{ height: 6, borderRadius: 6, background: "#f0f0f0", overflow: "hidden" }}>
+                        <div style={{
+                          width: `${(charPopup.level % 2 === 0 ? 60 : 35)}%`,
+                          height: "100%", borderRadius: 6,
+                          background: `linear-gradient(90deg,${charPopup.color},${charPopup.color}99)`,
+                        }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ PROFILE MODAL ══ */}
+          {profileOpen && (
+            <div
+              className="modal-overlay"
+              onClick={() => setProfile(false)}
+              style={{
+                position: "absolute", inset: 0,
+                background: "rgba(0,0,0,.35)", zIndex: 50,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <div
+                className="modal-card"
+                onClick={e => e.stopPropagation()}
+                style={{
+                  width: 520, background: "#fff", borderRadius: 28,
+                  boxShadow: "0 24px 60px rgba(0,0,0,.18)",
+                  padding: "28px 28px 24px",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: INK }}>Edit Profile</div>
+                  <button onClick={() => setProfile(false)} style={{
+                    width: 30, height: 30, borderRadius: "50%",
+                    background: "#f4f4f4", border: "none", cursor: "pointer",
+                    fontSize: 13, color: "#777",
+                  }}>✕</button>
+                </div>
+
+                {/* Current avatar */}
+                <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 22 }}>
+                  <div style={{
+                    width: 80, height: 80, borderRadius: "50%",
+                    background: (CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc") + "22",
+                    border: `3px solid ${CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc"}`,
+                    position: "relative", overflow: "hidden", flexShrink: 0,
+                    boxShadow: `0 4px 16px ${CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc"}44`,
+                  }}>
+                    <Image
+                      src={`/agents/${CHARS.find(c => c.id === editAvatar)?.file}`}
+                      alt="avatar" fill style={{ objectFit: "cover" }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>DISPLAY NAME</div>
+                    <input
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      maxLength={24}
+                      style={{
+                        width: "100%", padding: "10px 14px", borderRadius: 12,
+                        border: "1.5px solid #e8e8e8", fontSize: 15, fontWeight: 700,
+                        color: INK, outline: "none", fontFamily: "inherit",
+                        background: "#fafafa",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Avatar picker */}
+                <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 10 }}>CHOOSE AVATAR</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 22 }}>
+                  {CHARS.map(c => (
+                    <div
+                      key={c.id}
+                      className="picker-char"
+                      onClick={() => setEditAvatar(c.id)}
+                      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer" }}
+                    >
+                      <div style={{
+                        width: 72, height: 72, borderRadius: 14,
+                        background: c.color + "18",
+                        border: `2.5px solid ${editAvatar === c.id ? c.color : "transparent"}`,
+                        position: "relative", overflow: "hidden",
+                        boxShadow: editAvatar === c.id ? `0 0 0 3px ${c.color}44` : "none",
+                        transition: "box-shadow .15s, border-color .15s",
+                      }}>
+                        <Image src={`/agents/${c.file}`} alt={c.name} fill style={{ objectFit: "contain", padding: 4 }} />
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: editAvatar === c.id ? c.color : "#aaa" }}>{c.name}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Buttons */}
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={() => setProfile(false)} style={{
+                    flex: 1, padding: "12px 0", borderRadius: 30,
+                    background: "#f5f5f5", border: "1px solid #e8e8e8",
+                    cursor: "pointer", fontWeight: 700, fontSize: 14, color: "#777",
+                  }}>Cancel</button>
+                  <button onClick={saveProfile} style={{
+                    flex: 2, padding: "12px 0", borderRadius: 30,
+                    background: "linear-gradient(90deg,#ff8a3d,#ff5e7a)",
+                    border: "none", cursor: "pointer",
+                    color: "#fff", fontWeight: 800, fontSize: 14,
+                  }}>Save Changes</button>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </>
   );
 }
 
-function CharacterFigure({ moodling, index, total, isSelected, onClick }) {
-  const centerOffset = index - (total - 1) / 2;
-  const zIndex       = total - Math.abs(centerOffset);
-  const scale        = 1 - Math.abs(centerOffset) * 0.04;
-  const yShift       = Math.abs(centerOffset) * 6;
-
+/* ── Character node ── */
+function CharNode({ char, hovered, onEnter, onLeave, onClick }) {
+  const w = char.isMain ? char.imgH * 0.92 : char.imgH * 0.80;
   return (
     <div
-      className="char-card"
+      className="char-node"
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
       onClick={onClick}
       style={{
         display: "flex", flexDirection: "column", alignItems: "center",
-        position: "relative", zIndex, flex: "0 0 auto",
-        transform: `scale(${scale}) translateY(${yShift}px)`,
-        marginLeft: index === 0 ? 0 : -14,
+        marginLeft: char.isMain ? -110 : -88,
+        transform: hovered ? "translateY(-18px)" : "none",
+        zIndex: hovered ? 10 : (char.isMain ? 5 : 1),
+        position: "relative",
       }}
     >
-      {isSelected && (
+      {/* Hover tooltip */}
+      <div style={{
+        position: "absolute", top: -52, left: "50%", transform: "translateX(-50%)",
+        background: INK, color: "#fff",
+        borderRadius: 30, padding: "5px 14px",
+        fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
+        opacity: hovered ? 1 : 0,
+        transition: "opacity .18s",
+        pointerEvents: "none",
+        boxShadow: "0 4px 12px rgba(0,0,0,.15)",
+      }}>
+        {char.name}
+        {!char.noLevel && <span style={{ color: char.color, marginLeft: 6 }}>Lv.{char.level}</span>}
+        <span style={{ color: "#aaa", marginLeft: 6, fontSize: 10 }}>click for info</span>
         <div style={{
-          position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)",
-          width: 80, height: 80, borderRadius: "50%",
-          border: `3px solid ${moodling.color}`,
-          animation: "pulse-ring 1.2s ease-out infinite",
+          position: "absolute", bottom: -5, left: "50%", transform: "translateX(-50%)",
+          width: 0, height: 0,
+          borderLeft: "5px solid transparent",
+          borderRight: "5px solid transparent",
+          borderTop: `5px solid ${INK}`,
         }} />
-      )}
+      </div>
 
-      <div className="char-float" style={{ animationDelay: moodling.animDelay }}>
+      {/* Character image */}
+      <div style={{ position: "relative", width: w, height: char.imgH }}>
         <Image
-          src={`/agents/${moodling.file}`}
-          alt={moodling.name}
-          width={110}
-          height={110}
+          src={`/agents/${char.file}`}
+          alt={char.name}
+          fill
           style={{
             objectFit: "contain",
-            filter: isSelected
-              ? `drop-shadow(0 0 18px ${moodling.color})`
-              : "drop-shadow(0 8px 12px rgba(0,0,0,0.4))",
-            transition: "filter .2s",
+            filter: `drop-shadow(0 ${char.isMain ? 18 : 10}px ${char.isMain ? 28 : 14}px rgba(0,0,0,.14))`,
           }}
-          priority
+          priority={char.isMain}
         />
       </div>
-
-      {/* Shadow */}
-      <div style={{
-        width: 60, height: 12, borderRadius: "50%",
-        background: "rgba(0,0,0,0.28)", filter: "blur(4px)", marginTop: -6,
-      }} />
-
-      {/* Name tag */}
-      <div className="char-name-tag" style={{
-        position: "absolute", bottom: -28, left: "50%",
-        transform: "translateX(-50%) translateY(6px)",
-        background: moodling.color, color: "#1a1a1a",
-        fontWeight: 800, fontSize: "0.72rem",
-        borderRadius: 20, padding: "3px 10px",
-        whiteSpace: "nowrap",
-        opacity: isSelected ? 1 : 0,
-        transition: "opacity .2s, transform .2s",
-      }}>
-        {moodling.name}
-      </div>
     </div>
   );
 }
 
-function CurrencyChip({ icon, value, color }) {
+/* ── Donut stat (nav bar) ── */
+function DonutStat({ stat }) {
+  const r = 15;
+  const circ = 2 * Math.PI * r;
+  const arc  = (stat.pct / 100) * circ;
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 6,
-      background: "rgba(0,0,0,0.45)", border: `2px solid ${color}55`,
-      borderRadius: 50, padding: "5px 12px",
-    }}>
-      <span style={{ fontSize: "1.1rem" }}>{icon}</span>
-      <span style={{ color: "#fff", fontWeight: 700, fontSize: "0.95rem" }}>{value.toLocaleString()}</span>
-      <div style={{
-        width: 18, height: 18, borderRadius: "50%",
-        background: color, display: "flex", alignItems: "center",
-        justifyContent: "center", fontSize: "0.65rem", fontWeight: 900, color: "#1a1a1a",
-      }}>+</div>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+      <svg width="52" height="52" viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r={r} fill="none" stroke={stat.color + "22"} strokeWidth="4.5" />
+        <circle
+          cx="20" cy="20" r={r} fill="none"
+          stroke={stat.color} strokeWidth="4.5"
+          strokeDasharray={`${arc} ${circ}`}
+          strokeLinecap="round"
+          transform="rotate(-90 20 20)"
+        />
+        <text x="20" y="20" textAnchor="middle" dominantBaseline="central"
+          style={{ fontSize: 9, fontWeight: 800, fill: stat.color, fontFamily: "inherit" }}>
+          {stat.short}
+        </text>
+      </svg>
+      <span style={{ fontSize: 9, fontWeight: 700, color: stat.color + "bb", letterSpacing: .5 }}>
+        {stat.label.toUpperCase()}
+      </span>
     </div>
   );
 }
 
-function SideBtn({ icon, label, color, badge }) {
+/* ── Friend row ── */
+function FriendRow({ friend, offline }) {
   return (
-    <div className="btn-hover" style={{
-      display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "pointer",
+    <div className="friend-row" style={{
+      display: "flex", alignItems: "center", gap: 12,
+      padding: "8px 20px", cursor: "pointer",
+      transition: "background .15s",
+      opacity: offline ? 0.5 : 1,
     }}>
-      <div style={{
-        width: 56, height: 56, borderRadius: 16,
-        background: `linear-gradient(135deg, ${color}cc, ${color}88)`,
-        border: `2px solid ${color}`,
-        boxShadow: `0 4px 16px ${color}55`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: "1.7rem", position: "relative",
-      }}>
-        {icon}
-        {badge && (
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: "50%",
+          background: friend.bg,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 20,
+        }}>{friend.emoji}</div>
+        {!offline && (
           <div style={{
-            position: "absolute", top: -6, right: -6,
-            width: 18, height: 18, borderRadius: "50%",
-            background: "#ff3b3b", border: "2px solid #fff",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "0.65rem", fontWeight: 900, color: "#fff",
-            animation: "badge-pop 1.5s ease-in-out infinite",
-          }}>!</div>
+            position: "absolute", bottom: 0, right: 0,
+            width: 11, height: 11, borderRadius: "50%",
+            background: "#22c55e", border: "2px solid #fafafa",
+          }} />
         )}
       </div>
-      <span style={{
-        color: "#fff", fontSize: "0.65rem", fontWeight: 700,
-        textShadow: "0 1px 4px rgba(0,0,0,0.6)", textTransform: "uppercase",
-      }}>{label}</span>
-    </div>
-  );
-}
-
-function NavBtn({ icon, label, badge }) {
-  return (
-    <div className="btn-hover" style={{
-      display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-      cursor: "pointer", minWidth: 58,
-    }}>
-      <div style={{
-        width: 52, height: 52, borderRadius: 14,
-        background: "rgba(255,255,255,0.15)",
-        border: "2px solid rgba(255,255,255,0.3)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: "1.6rem", position: "relative",
-        backdropFilter: "blur(4px)",
-      }}>
-        {icon}
-        {badge && (
-          <div style={{
-            position: "absolute", top: -6, right: -6,
-            width: 18, height: 18, borderRadius: "50%",
-            background: "#ff3b3b", border: "2px solid #fff",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "0.65rem", fontWeight: 900, color: "#fff",
-            animation: "badge-pop 1.5s ease-in-out infinite",
-          }}>!</div>
-        )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ color: INK, fontWeight: 700, fontSize: 13 }}>{friend.name}</div>
+        <div style={{ color: "#bbb", fontSize: 11 }}>{friend.mood}</div>
       </div>
-      <span style={{
-        color: "#fff", fontSize: "0.6rem", fontWeight: 700,
-        textShadow: "0 1px 4px rgba(0,0,0,0.6)", textTransform: "uppercase",
-      }}>{label}</span>
     </div>
   );
 }

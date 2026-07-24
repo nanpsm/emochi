@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 const INK = "#1a1a2e";
 
@@ -102,6 +103,10 @@ const WORK_OPTIONS = [
   { label: "More than 10 hrs", sub: "Overloaded", short: ">10h",  pct: 100, deltas: { Buzzy: 3, Dozy: 2, Cheer: -2 } },
 ];
 
+// Reverse-map stored decimal hours back to option indices
+const SLEEP_HOURS_LOOKUP = (h) => h == null ? null : h <= 4 ? 0 : h <= 6 ? 1 : h <= 9 ? 2 : 3;
+const WORK_HOURS_LOOKUP  = (h) => h == null ? null : h <= 3 ? 0 : h <= 7 ? 1 : h <= 10 ? 2 : 3;
+
 // mood score per feeling (for the Mood donut)
 const FEELING_MOOD = {
   Happy:   { emoji: "😊", pct: 90 },
@@ -151,10 +156,15 @@ function getWiseySuggestions(stats) {
   return tips;
 }
 
+function localDateStr(d) {
+  // Use local year/month/day (not UTC) so timezone offsets don't shift the date
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function getCheckinDate() {
   const now = new Date();
   if (now.getHours() < 6) now.setDate(now.getDate() - 1);
-  return now.toISOString().split("T")[0];
+  return localDateStr(now);
 }
 
 function getRecentDates() {
@@ -163,7 +173,7 @@ function getRecentDates() {
     const d = new Date();
     if (d.getHours() < 6) d.setDate(d.getDate() - 1);
     d.setDate(d.getDate() - i);
-    const key = d.toISOString().split("T")[0];
+    const key = localDateStr(d);
     const label = i === 0 ? "Today" : i === 1 ? "Yesterday"
       : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
     dates.push({ key, label });
@@ -196,11 +206,17 @@ function calcDeltas(selectedFeelings, sleepIdx, workIdx) {
 // ── Main page ─────────────────────────────────────────────────
 
 export default function MainPage() {
+  const router = useRouter();
   const [scale, setScale]           = useState(1);
   const [friendsOpen, setFriends]   = useState(false);
   const [friendSearch, setFriendSearch] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimer = useRef(null);
   const [historyOpen, setHistory]   = useState(false);
   const [historyDate, setHistoryDate] = useState(getCheckinDate);
+  const [historyScores, setHistoryScores] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [hovChar, setHovChar]       = useState(null);
   const [charPopup, setCharPopup]   = useState(null);
   const [profileOpen, setProfile]   = useState(false);
@@ -210,6 +226,16 @@ export default function MainPage() {
   const [editName, setEditName]     = useState("You");
   const [editAvatar, setEditAvatar] = useState("wisey");
   const [savingProfile, setSavingProfile] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [emochiScores, setEmochiScores] = useState({});
+
+  // Friends feature state
+  const [friendsList, setFriendsList]         = useState([]);
+  const [friendRequests, setFriendRequests]   = useState([]);
+  const [friendsTab, setFriendsTab]           = useState("friends"); // "friends" | "requests" | "search"
+  const [sendingReq, setSendingReq]           = useState({}); // { [userId]: 'pending'|'friends'|'sent' }
+  const [friendScores, setFriendScores]       = useState(null); // { friend, scores }
+  const [friendScoresLoading, setFriendScoresLoading] = useState(false);
 
   // Daily check-in state
   const [stats, setStats]                       = useState(EMPTY_STATS);
@@ -240,6 +266,18 @@ export default function MainPage() {
         if (data.avatar) setAvatar(data.avatar);
       })
       .catch(() => {});
+    fetch("/api/emochi-scores")
+      .then(r => r.json())
+      .then(data => { if (data && !data.error) setEmochiScores(data); })
+      .catch(() => {});
+    fetch("/api/friends")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setFriendsList(data); })
+      .catch(() => {});
+    fetch("/api/friends/requests")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setFriendRequests(data); })
+      .catch(() => {});
   }, []);
 
   // Auto-cycle the cloud stat widget every 4 seconds
@@ -248,34 +286,165 @@ export default function MainPage() {
     return () => clearInterval(id);
   }, []);
 
-  // Auto-cycle through Wisey's suggestions (when there's more than one) every 5 seconds
+hy  // Auto-cycle through Wisey's suggestions (when there's more than one) every 5 seconds
   useEffect(() => {
     if (!wiseyTips || wiseyTips.length <= 1) return;
     const id = setInterval(() => setWiseyIdx(i => (i + 1) % wiseyTips.length), 5000);
     return () => clearInterval(id);
   }, [wiseyTips]);
+  // Fetch history scores from DB whenever the panel opens or date changes
+  useEffect(() => {
+    if (!historyOpen) return;
+    setHistoryScores(null);
+    setHistoryLoading(true);
+    fetch(`/api/history-scores?date=${historyDate}`)
+      .then(r => r.json())
+      .then(rows => {
+        console.log("[history] date:", historyDate, "rows:", rows);
+        if (!Array.isArray(rows)) {
+          setHistoryScores([]);
+          return;
+        }
+        if (rows.length === 0) {
+          setHistoryScores([]);
+          return;
+        }
+        const ranked = rows
+          .map(row => {
+            const char = CHARS.find(c => c.name.toLowerCase() === row.emochi_name.toLowerCase());
+            console.log("[history] row:", row.emochi_name, "→ char:", char?.name);
+            if (!char) return null;
+            return { ...char, score: row.score, level: Math.min(10, Math.floor(row.score / 10)) };
+          })
+          .filter(Boolean)
+          .sort((a, b) => b.score - a.score);
+        console.log("[history] ranked:", ranked.length, "items");
+        setHistoryScores(ranked);
+      })
+      .catch((e) => { console.error("[history] fetch error:", e); setHistoryScores([]); })
+      .finally(() => setHistoryLoading(false));
+  }, [historyOpen, historyDate]);
 
   // Show check-in popup once per day (resets at 6am); restore stats if already done
   useEffect(() => {
-    const key = `emochi_checkin_${getCheckinDate()}`;
+    const date = getCheckinDate();
+    const key  = `emochi_checkin_${date}`;
     const saved = localStorage.getItem(key);
-    if (!saved) {
-      setTimeout(() => setCheckinOpen(true), 600);
-    } else {
+    if (saved) {
       try {
         const { sleepIdx, workIdx, feelingIdxs } = JSON.parse(saved);
         applyStats(feelingIdxs, sleepIdx, workIdx);
-      } catch { /* legacy entry without data — show popup again */ }
+      } catch { setTimeout(() => setCheckinOpen(true), 600); }
+    } else {
+      // Try restoring from DB (e.g. new device / cleared storage)
+      fetch(`/api/daily-checkin?date=${date}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data?.feelings != null) {
+            // feelings stored as comma-separated indices
+            const feelingIdxs = data.feelings.split(",").map(Number).filter(n => !isNaN(n));
+            const sleepIdx = SLEEP_HOURS_LOOKUP(data.sleep_hours);
+            const workIdx  = WORK_HOURS_LOOKUP(data.work_hours);
+            localStorage.setItem(key, JSON.stringify({ feelingIdxs, sleepIdx, workIdx }));
+            applyStats(feelingIdxs, sleepIdx, workIdx);
+          } else {
+            setTimeout(() => setCheckinOpen(true), 600);
+          }
+        })
+        .catch(() => setTimeout(() => setCheckinOpen(true), 600));
     }
   }, []);
 
-  const currentChar = CHARS.find(c => c.id === avatar) ?? CHARS[4];
+  // Merge DB scores into CHARS so levels reflect real data
+  const enrichedChars = CHARS.map(c => {
+    const s = emochiScores[c.id];
+    return s ? { ...c, score: s.score, level: s.level } : c;
+  });
+
+  const currentChar = enrichedChars.find(c => c.id === avatar) ?? enrichedChars[4];
   const PANEL_W = 248;
+
+  async function sendFriendRequest(toUserId) {
+    setSendingReq(prev => ({ ...prev, [toUserId]: "loading" }));
+    try {
+      const res = await fetch("/api/friends/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toUserId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error("Friend request failed:", res.status, err);
+        setSendingReq(prev => ({ ...prev, [toUserId]: null }));
+        return;
+      }
+      setSendingReq(prev => ({ ...prev, [toUserId]: "sent" }));
+      setSearchResults(prev => prev.map(u =>
+        u.id === toUserId ? { ...u, friend_status: "pending_sent" } : u
+      ));
+    } catch (e) {
+      console.error("Friend request error:", e);
+      setSendingReq(prev => ({ ...prev, [toUserId]: null }));
+    }
+  }
+
+  async function respondToRequest(requestId, fromUserId, action) {
+    try {
+      const res = await fetch("/api/friends/respond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, action }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error("Respond failed:", res.status, err);
+        return;
+      }
+      setFriendRequests(prev => prev.filter(r => r.request_id !== requestId));
+      if (action === "accept") {
+        fetch("/api/friends")
+          .then(r => r.json())
+          .then(data => { if (Array.isArray(data)) setFriendsList(data); })
+          .catch(() => {});
+      }
+    } catch (e) {
+      console.error("Respond error:", e);
+    }
+  }
+
+  async function loadFriendScores(friend) {
+    setFriendScores({ friend, scores: null });
+    setFriendScoresLoading(true);
+    try {
+      const res = await fetch(`/api/friends/${friend.id}/scores`);
+      const scores = await res.json();
+      setFriendScores({ friend, scores });
+    } catch {
+      setFriendScores({ friend, scores: {} });
+    } finally {
+      setFriendScoresLoading(false);
+    }
+  }
+
+  function handleFriendSearch(val) {
+    setFriendSearch(val);
+    clearTimeout(searchTimer.current);
+    if (val.trim().length < 2) { setSearchResults([]); return; }
+    setSearchLoading(true);
+    searchTimer.current = setTimeout(() => {
+      fetch(`/api/users/search?q=${encodeURIComponent(val.trim())}`)
+        .then(r => r.json())
+        .then(data => setSearchResults(Array.isArray(data) ? data : []))
+        .catch(() => setSearchResults([]))
+        .finally(() => setSearchLoading(false));
+    }, 350);
+  }
 
   function openProfile() {
     setEditName(userName);
     setEditAvatar(avatar);
     setConfirmDelete(false);
+    setEditingName(false);
     setProfile(true);
   }
 
@@ -345,13 +514,27 @@ export default function MainPage() {
   }
 
   function submitCheckin() {
-    const key = `emochi_checkin_${getCheckinDate()}`;
+    const date = getCheckinDate();
+    const key = `emochi_checkin_${date}`;
     localStorage.setItem(key, JSON.stringify({
       feelingIdxs: selectedFeelings,
       sleepIdx: selectedSleep,
       workIdx: selectedWork,
     }));
     applyStats(selectedFeelings, selectedSleep, selectedWork);
+    // Save to database (fire-and-forget)
+    const moodScore = getMoodStat(selectedFeelings).pct;
+    fetch("/api/daily-checkin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date,
+        sleepIdx: selectedSleep,
+        workIdx: selectedWork,
+        feelingIdxs: selectedFeelings,
+        moodScore,
+      }),
+    }).catch(() => {});
     setCheckinDone(true);
     setTimeout(() => {
       setCheckinOpen(false);
@@ -449,24 +632,27 @@ export default function MainPage() {
                 border: "1px solid #e8e8e8", backdropFilter: "blur(8px)",
                 cursor: "pointer", transition: "background .2s",
               }}>
-                <span style={{ fontSize: 18 }}>📊</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: historyOpen ? "#fff" : "#555" }}>bar_chart</span>
                 <span style={{ fontSize: 14, fontWeight: 700, color: historyOpen ? "#fff" : "#555" }}>History</span>
               </button>
-              <button onClick={() => setFriends(o => !o)} style={{
+              <button onClick={() => { setFriends(o => !o); if (!friendsOpen) setFriendsTab("friends"); }} style={{
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "12px 20px", borderRadius: 36,
                 background: friendsOpen ? INK : "rgba(255,255,255,.7)",
                 border: "1px solid #e8e8e8", backdropFilter: "blur(8px)",
-                cursor: "pointer", transition: "background .2s",
+                cursor: "pointer", transition: "background .2s", position: "relative",
               }}>
-                <span style={{ fontSize: 18 }}>👥</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: friendsOpen ? "#fff" : "#555" }}>group</span>
                 <span style={{ fontSize: 14, fontWeight: 700, color: friendsOpen ? "#fff" : "#555" }}>Friends</span>
-                <span style={{
-                  width: 18, height: 18, borderRadius: "50%",
-                  background: "#5e8cff", color: "#fff",
-                  fontSize: 9, fontWeight: 800,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>{FRIENDS.length}</span>
+                {friendRequests.length > 0 && (
+                  <span style={{
+                    position: "absolute", top: 6, right: 6,
+                    width: 16, height: 16, borderRadius: "50%",
+                    background: "#ef4444", color: "#fff",
+                    fontSize: 9, fontWeight: 800,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>{friendRequests.length}</span>
+                )}
               </button>
             </div>
           </div>
@@ -475,49 +661,275 @@ export default function MainPage() {
           <div className="friends-panel" style={{
             position: "absolute", right: 0, top: 80, bottom: 0, width: PANEL_W,
             background: "#fafafa", borderLeft: "1px solid #f0f0f0",
-            display: "flex", flexDirection: "column", zIndex: 20,
+            display: "flex", flexDirection: "column", zIndex: 50,
             transform: friendsOpen ? "translateX(0)" : `translateX(${PANEL_W}px)`,
             opacity: friendsOpen ? 1 : 0,
             pointerEvents: friendsOpen ? "auto" : "none",
+            transition: "transform .25s ease, opacity .2s",
+            boxShadow: "-8px 0 32px rgba(0,0,0,.10)",
           }}>
-            <div style={{ padding: "18px 20px 12px", borderBottom: "1px solid #f0f0f0" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            {/* Header */}
+            <div style={{ padding: "16px 16px 0", borderBottom: "1px solid #f0f0f0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                 <div style={{ fontWeight: 800, fontSize: 16, color: INK }}>Friends</div>
                 <button onClick={() => setFriends(false)} style={{
                   width: 28, height: 28, borderRadius: "50%",
                   background: "#f0f0f0", border: "none", cursor: "pointer", fontSize: 13, color: "#777",
                 }}>✕</button>
               </div>
-              <div style={{ marginTop: 10, position: "relative" }}>
-                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: "#bbb", pointerEvents: "none" }}>🔍</span>
-                <input
-                  type="text"
-                  placeholder="Search friends…"
-                  value={friendSearch}
-                  onChange={e => setFriendSearch(e.target.value)}
-                  style={{
-                    width: "100%", boxSizing: "border-box",
-                    padding: "8px 12px 8px 32px",
-                    borderRadius: 20, border: "1.5px solid #e8e8e8",
-                    background: "#f5f5f5", fontSize: 13, color: INK,
-                    outline: "none", fontFamily: "inherit",
-                  }}
-                />
+              {/* Tabs */}
+              <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+                {[
+                  { key: "friends", label: "Friends", icon: "group" },
+                  { key: "requests", label: "Requests", icon: "person_add", badge: friendRequests.length },
+                  { key: "search", label: "Search", icon: "person_search" },
+                ].map(tab => (
+                  <button key={tab.key} onClick={() => setFriendsTab(tab.key)} style={{
+                    flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                    padding: "6px 4px 8px", borderRadius: 10,
+                    background: friendsTab === tab.key ? INK : "transparent",
+                    border: "none", cursor: "pointer", position: "relative",
+                    transition: "background .15s",
+                  }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, color: friendsTab === tab.key ? "#fff" : "#888" }}>{tab.icon}</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: friendsTab === tab.key ? "#fff" : "#999", letterSpacing: .3 }}>{tab.label}</span>
+                    {tab.badge > 0 && (
+                      <span style={{
+                        position: "absolute", top: 3, right: 6,
+                        width: 14, height: 14, borderRadius: "50%",
+                        background: "#ef4444", color: "#fff",
+                        fontSize: 8, fontWeight: 800,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>{tab.badge}</span>
+                    )}
+                  </button>
+                ))}
               </div>
             </div>
-            <div style={{ overflowY: "auto", flex: 1 }}>
-              <div style={{ padding: "10px 0" }}>
-                {FRIENDS.filter(f => f.name.toLowerCase().includes(friendSearch.toLowerCase())).map(f => <FriendRow key={f.id} friend={f} />)}
+
+            {/* ── Friends tab ── */}
+            {friendsTab === "friends" && (
+              <div style={{ overflowY: "auto", flex: 1 }}>
+                {friendsList.length === 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 20px", gap: 8 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 36, color: "#ccc" }}>group</span>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", textAlign: "center" }}>No friends yet — search to add people!</div>
+                  </div>
+                ) : (
+                  <div style={{ padding: "8px 0" }}>
+                    {friendsList.map(f => (
+                      <button key={f.id} onClick={() => loadFriendScores(f)} style={{
+                        width: "100%", display: "flex", alignItems: "center", gap: 10,
+                        padding: "8px 16px", background: "none", border: "none", cursor: "pointer",
+                        textAlign: "left",
+                      }}>
+                        <div style={{
+                          width: 36, height: 36, borderRadius: "50%", background: "#e8e8f0",
+                          flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          {f.avatar_emochi
+                            ? <img src={`/idle/${f.avatar_emochi.toLowerCase()}.png`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            : <span className="material-symbols-outlined" style={{ fontSize: 20, color: "#aaa" }}>person</span>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ color: INK, fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.display_name || f.username}</div>
+                          <div style={{ color: "#bbb", fontSize: 11 }}>@{f.username}</div>
+                        </div>
+                        <span className="material-symbols-outlined" style={{ fontSize: 16, color: "#ccc" }}>chevron_right</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-            <div style={{ padding: "14px 20px", borderTop: "1px solid #f0f0f0" }}>
-              <button style={{
-                width: "100%", padding: "10px 0", borderRadius: 30,
-                background: "linear-gradient(90deg,#ff8a3d,#ff5e7a)",
-                border: "none", cursor: "pointer", color: "#fff", fontWeight: 700, fontSize: 13,
-              }}>+ Add Friend</button>
-            </div>
+            )}
+
+            {/* ── Requests tab ── */}
+            {friendsTab === "requests" && (
+              <div style={{ overflowY: "auto", flex: 1 }}>
+                {friendRequests.length === 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 20px", gap: 8 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 36, color: "#ccc" }}>person_add</span>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", textAlign: "center" }}>No pending requests</div>
+                  </div>
+                ) : (
+                  <div style={{ padding: "8px 0" }}>
+                    {friendRequests.map(r => (
+                      <div key={r.request_id} style={{ padding: "10px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{
+                          width: 36, height: 36, borderRadius: "50%", background: "#e8e8f0",
+                          flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          {r.avatar_emochi
+                            ? <img src={`/idle/${r.avatar_emochi.toLowerCase()}.png`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            : <span className="material-symbols-outlined" style={{ fontSize: 20, color: "#aaa" }}>person</span>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ color: INK, fontWeight: 700, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.display_name || r.username}</div>
+                          <div style={{ color: "#bbb", fontSize: 10 }}>@{r.username}</div>
+                          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                            <button onClick={() => respondToRequest(r.request_id, r.id, "accept")} style={{
+                              flex: 1, padding: "4px 0", borderRadius: 8, border: "none", cursor: "pointer",
+                              background: "#22c55e", color: "#fff", fontWeight: 700, fontSize: 11,
+                            }}>Accept</button>
+                            <button onClick={() => respondToRequest(r.request_id, r.id, "decline")} style={{
+                              flex: 1, padding: "4px 0", borderRadius: 8, border: "none", cursor: "pointer",
+                              background: "#f0f0f0", color: "#888", fontWeight: 700, fontSize: 11,
+                            }}>Decline</button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Search tab ── */}
+            {friendsTab === "search" && (
+              <>
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
+                  <div style={{ position: "relative" }}>
+                    <span className="material-symbols-outlined" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 18, color: "#bbb", pointerEvents: "none" }}>search</span>
+                    <input
+                      type="text"
+                      placeholder="Search by name or username…"
+                      value={friendSearch}
+                      onChange={e => handleFriendSearch(e.target.value)}
+                      style={{
+                        width: "100%", boxSizing: "border-box",
+                        padding: "8px 12px 8px 34px",
+                        borderRadius: 20, border: "1.5px solid #e8e8e8",
+                        background: "#f5f5f5", fontSize: 12, color: INK,
+                        outline: "none", fontFamily: "inherit",
+                      }}
+                    />
+                  </div>
+                </div>
+                <div style={{ overflowY: "auto", flex: 1 }}>
+                  {friendSearch.trim().length < 2 ? (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 20px", gap: 8 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 36, color: "#ccc" }}>person_search</span>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", textAlign: "center" }}>Type at least 2 characters to search</div>
+                    </div>
+                  ) : searchLoading ? (
+                    <div style={{ padding: "16px 20px", color: "#bbb", fontSize: 13 }}>Searching…</div>
+                  ) : searchResults.length === 0 ? (
+                    <div style={{ padding: "16px 20px", color: "#bbb", fontSize: 13 }}>No users found.</div>
+                  ) : (
+                    <div style={{ padding: "8px 0" }}>
+                      {searchResults.map(u => {
+                        const status = u.friend_status;
+                        return (
+                          <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px" }}>
+                            <div style={{
+                              width: 36, height: 36, borderRadius: "50%", background: "#e8e8f0",
+                              flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
+                            }}>
+                              {u.avatar_emochi
+                                ? <img src={`/idle/${u.avatar_emochi.toLowerCase()}.png`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                : <span className="material-symbols-outlined" style={{ fontSize: 20, color: "#aaa" }}>person</span>}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ color: INK, fontWeight: 700, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.display_name || u.username}</div>
+                              <div style={{ color: "#bbb", fontSize: 10 }}>@{u.username}</div>
+                            </div>
+                            {status === "friends" ? (
+                              <span className="material-symbols-outlined" style={{ fontSize: 18, color: "#22c55e" }}>check_circle</span>
+                            ) : status === "pending_sent" ? (
+                              <span style={{ fontSize: 10, color: "#888", fontWeight: 600 }}>Sent</span>
+                            ) : status === "pending_received" ? (
+                              <span style={{ fontSize: 10, color: "#f59e0b", fontWeight: 600 }}>Respond</span>
+                            ) : (
+                              <button
+                                onClick={() => sendFriendRequest(u.id)}
+                                disabled={sendingReq[u.id] === "loading"}
+                                style={{
+                                  width: 28, height: 28, borderRadius: "50%", border: "none",
+                                  background: sendingReq[u.id] === "loading" ? "#e0e0e0" : INK,
+                                  color: "#fff", cursor: "pointer",
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>person_add</span>
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
+
+          {/* ══ FRIEND SCORES MODAL ══ */}
+          {friendScores && createPortal(
+            <div style={{
+              position: "fixed", inset: 0, zIndex: 9999,
+              background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center",
+            }} onClick={() => setFriendScores(null)}>
+              <div style={{
+                background: "#fff", borderRadius: 28, padding: "28px 28px 24px",
+                width: 340, maxHeight: "80vh", overflowY: "auto",
+                boxShadow: "0 24px 64px rgba(0,0,0,.2)",
+              }} onClick={e => e.stopPropagation()}>
+                {/* Friend header */}
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                  <div style={{
+                    width: 48, height: 48, borderRadius: "50%", background: "#e8e8f0",
+                    overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    {friendScores.friend.avatar_emochi
+                      ? <img src={`/idle/${friendScores.friend.avatar_emochi.toLowerCase()}.png`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      : <span className="material-symbols-outlined" style={{ fontSize: 26, color: "#aaa" }}>person</span>}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 16, color: INK }}>{friendScores.friend.display_name || friendScores.friend.username}</div>
+                    <div style={{ color: "#bbb", fontSize: 12 }}>@{friendScores.friend.username}</div>
+                  </div>
+                  <button onClick={() => setFriendScores(null)} style={{
+                    marginLeft: "auto", width: 28, height: 28, borderRadius: "50%",
+                    background: "#f0f0f0", border: "none", cursor: "pointer", fontSize: 13, color: "#777",
+                  }}>✕</button>
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#888", marginBottom: 12 }}>Emochi Squad</div>
+                {friendScoresLoading ? (
+                  <div style={{ color: "#bbb", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Loading…</div>
+                ) : !friendScores.scores || Object.keys(friendScores.scores).length === 0 ? (
+                  <div style={{ color: "#bbb", fontSize: 13, textAlign: "center", padding: "20px 0" }}>No scores yet</div>
+                ) : (
+                  CHARS.filter(c => !c.noLevel).map(c => {
+                    const data = friendScores.scores[c.id];
+                    const level = data?.level ?? 0;
+                    const score = data?.score ?? 0;
+                    return (
+                      <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                        <div style={{
+                          width: 36, height: 36, borderRadius: "50%", background: c.color + "22",
+                          border: `2px solid ${c.color}`, overflow: "hidden", flexShrink: 0,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          <img src={`/idle/${c.file.toLowerCase()}`} alt={c.name} style={{ width: 28, height: 28, objectFit: "contain" }} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: INK }}>{c.name}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: c.color }}>Lv {level}</span>
+                          </div>
+                          <div style={{ height: 6, borderRadius: 3, background: "#f0f0f0", overflow: "hidden" }}>
+                            <div style={{ width: `${score}%`, height: "100%", borderRadius: 3, background: c.color, transition: "width .5s" }} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>,
+            document.body
+          )}
 
           {/* ══ CLOUD STAT WIDGET ══ */}
           <div style={{ position: "absolute", top: 90, left: 60, zIndex: 25 }}>
@@ -550,7 +962,7 @@ export default function MainPage() {
                   position: "relative", overflow: "hidden", flexShrink: 0,
                   boxShadow: `0 4px 16px ${wiseyChar.color}55`,
                 }}>
-                  <Image src={`/idle/${wiseyChar.file}`} alt="Wisey" fill style={{ objectFit: "cover" }} />
+                  <Image src={`/idle/${wiseyChar.file.toLowerCase()}`} alt="Wisey" fill style={{ objectFit: "cover" }} />
                 </div>
                 {/* Message bubble */}
                 <div
@@ -598,11 +1010,10 @@ export default function MainPage() {
 
           {/* ══ CHARACTERS GROUP ══ */}
           <div style={{
-            position: "absolute", left: 0, right: friendsOpen ? PANEL_W : 0, bottom: 160,
+            position: "absolute", left: 0, right: 0, bottom: 160,
             display: "flex", alignItems: "flex-end", justifyContent: "center",
-            transition: "right .28s cubic-bezier(.4,0,.2,1)",
           }}>
-            {CHARS.map(c => (
+            {enrichedChars.map(c => (
               <CharNode
                 key={c.id} char={c}
                 hovered={hovChar === c.id}
@@ -615,11 +1026,10 @@ export default function MainPage() {
 
           {/* ══ DEBATE BUTTON ══ */}
           <div style={{
-            position: "absolute", left: 0, right: friendsOpen ? PANEL_W : 0,
+            position: "absolute", left: 0, right: 0,
             bottom: 36, display: "flex", justifyContent: "center",
-            transition: "right .28s cubic-bezier(.4,0,.2,1)",
           }}>
-            <button className="btn-debate" style={{
+            <button onClick={() => router.push("/debate")} className="btn-debate" style={{
               display: "flex", alignItems: "center", gap: 14,
               padding: "17px 52px", borderRadius: 16,
               background: "linear-gradient(135deg,#1a1a2e 0%,#2e1f5e 100%)",
@@ -655,7 +1065,7 @@ export default function MainPage() {
                 filter: `drop-shadow(0 16px 40px ${charPopup.char.color}88)`,
                 animation: "cloudPop .25s ease",
               }}>
-                <Image src={`/idle/${charPopup.char.file}`} alt={charPopup.char.name} fill style={{ objectFit: "contain" }} />
+                <Image src={`/idle/${charPopup.char.file.toLowerCase()}`} alt={charPopup.char.name} fill style={{ objectFit: "contain" }} />
               </div>
 
               {/* CSS conversation cloud — auto-sizes to text, no PNG */}
@@ -694,14 +1104,40 @@ export default function MainPage() {
                       flexDirection: "column",
                       gap: 10,
                     }}>
-                      {/* Agent name */}
-                      <div style={{
-                        color: charPopup.char.color,
-                        fontSize: 22,
-                        fontWeight: 900,
-                        lineHeight: 1.1,
-                      }}>
-                        {charPopup.char.name}
+                      {/* Agent name + level/score */}
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{
+                          color: charPopup.char.color,
+                          fontSize: 22,
+                          fontWeight: 900,
+                          lineHeight: 1.1,
+                        }}>
+                          {charPopup.char.name}
+                        </div>
+                        {!charPopup.char.noLevel && (
+                          <div style={{
+                            display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0,
+                          }}>
+                            <div style={{
+                              fontSize: 13, fontWeight: 800, color: charPopup.char.color,
+                              background: charPopup.char.color + "18", borderRadius: 20,
+                              padding: "3px 10px", border: `1px solid ${charPopup.char.color}40`,
+                            }}>
+                              Lv.{charPopup.char.level}
+                            </div>
+                            {charPopup.char.score != null && (
+                              <div style={{
+                                fontSize: 12, fontWeight: 700,
+                                color: charPopup.char.score > charPopup.char.level ? "#22c55e"
+                                     : charPopup.char.score < charPopup.char.level ? "#ef4444" : "#aaa",
+                              }}>
+                                {charPopup.char.score > charPopup.char.level ? `▲ ${charPopup.char.score} pts`
+                                 : charPopup.char.score < charPopup.char.level ? `▼ ${charPopup.char.score} pts`
+                                 : `${charPopup.char.score} pts`}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Role pill */}
@@ -791,39 +1227,51 @@ export default function MainPage() {
                 boxShadow: "0 24px 60px rgba(0,0,0,.18)", padding: "28px 28px 24px",
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: INK }}>Edit Profile</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: INK }}>Profile</div>
                   <button onClick={() => setProfile(false)} style={{
                     width: 30, height: 30, borderRadius: "50%",
                     background: "#f4f4f4", border: "none", cursor: "pointer", fontSize: 13, color: "#777",
                   }}>✕</button>
                 </div>
+                {/* Avatar + name */}
                 <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 22 }}>
                   <div style={{
                     width: 80, height: 80, borderRadius: "50%",
-                    background: (CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc") + "22",
-                    border: `3px solid ${CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc"}`,
+                    background: (enrichedChars.find(c => c.id === editAvatar)?.color ?? "#ccc") + "22",
+                    border: `3px solid ${enrichedChars.find(c => c.id === editAvatar)?.color ?? "#ccc"}`,
                     position: "relative", overflow: "hidden", flexShrink: 0,
-                    boxShadow: `0 4px 16px ${CHARS.find(c => c.id === editAvatar)?.color ?? "#ccc"}44`,
+                    boxShadow: `0 4px 16px ${enrichedChars.find(c => c.id === editAvatar)?.color ?? "#ccc"}44`,
                   }}>
-                    <Image src={`/idle/${CHARS.find(c => c.id === editAvatar)?.file.toLowerCase()}`} alt="avatar" fill style={{ objectFit: "cover" }} />
+                    <Image src={`/idle/${enrichedChars.find(c => c.id === editAvatar)?.file.toLowerCase()}`} alt="avatar" fill style={{ objectFit: "cover" }} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>DISPLAY NAME</div>
-                    <input
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
-                      maxLength={24}
-                      style={{
-                        width: "100%", padding: "10px 14px", borderRadius: 12,
+                    {editingName ? (
+                      <input
+                        autoFocus
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        maxLength={24}
+                        style={{
+                          width: "100%", padding: "10px 14px", borderRadius: 12,
+                          border: "1.5px solid #f97316", fontSize: 15, fontWeight: 700,
+                          color: INK, outline: "none", fontFamily: "inherit", background: "#fff",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        padding: "10px 14px", borderRadius: 12,
                         border: "1.5px solid #e8e8e8", fontSize: 15, fontWeight: 700,
-                        color: INK, outline: "none", fontFamily: "inherit", background: "#fafafa",
-                      }}
-                    />
+                        color: INK, background: "#fafafa",
+                      }}>{editName}</div>
+                    )}
                   </div>
                 </div>
+                {/* Avatar picker — only active in edit mode */}
                 <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 10 }}>CHOOSE AVATAR</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 22 }}>
-                  {CHARS.map(c => (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 22, opacity: editingName ? 1 : 0.4, pointerEvents: editingName ? "auto" : "none" }}>
+                  {enrichedChars.map(c => (
                     <div key={c.id} className="picker-char" onClick={() => setEditAvatar(c.id)}
                       style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer" }}>
                       <div style={{
@@ -839,18 +1287,40 @@ export default function MainPage() {
                     </div>
                   ))}
                 </div>
+                {/* Action buttons */}
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={() => setProfile(false)} style={{
-                    flex: 1, padding: "12px 0", borderRadius: 30,
-                    background: "#f5f5f5", border: "1px solid #e8e8e8",
-                    cursor: "pointer", fontWeight: 700, fontSize: 14, color: "#777",
-                  }}>Cancel</button>
-                  <button onClick={saveProfile} style={{
-                    flex: 2, padding: "12px 0", borderRadius: 30,
-                    background: "linear-gradient(90deg,#ff8a3d,#ff5e7a)",
-                    border: "none", cursor: savingProfile ? "not-allowed" : "pointer",
-                    color: "#fff", fontWeight: 800, fontSize: 14, opacity: savingProfile ? 0.7 : 1,
-                  }} disabled={savingProfile}>{savingProfile ? "Saving…" : "Save Changes"}</button>
+                  {editingName ? (
+                    <>
+                      <button onClick={() => { setEditName(userName); setEditAvatar(avatar); setEditingName(false); }} style={{
+                        flex: 1, padding: "12px 0", borderRadius: 30,
+                        background: "#f5f5f5", border: "1px solid #e8e8e8",
+                        cursor: "pointer", fontWeight: 700, fontSize: 14, color: "#777",
+                      }}>Cancel</button>
+                      <button onClick={async () => { await saveProfile(); setEditingName(false); }} style={{
+                        flex: 2, padding: "12px 0", borderRadius: 30,
+                        background: "linear-gradient(90deg,#ff8a3d,#ff5e7a)",
+                        border: "none", cursor: savingProfile ? "not-allowed" : "pointer",
+                        color: "#fff", fontWeight: 800, fontSize: 14, opacity: savingProfile ? 0.7 : 1,
+                      }} disabled={savingProfile}>{savingProfile ? "Saving…" : "Save Changes"}</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => setProfile(false)} style={{
+                        flex: 1, padding: "12px 0", borderRadius: 30,
+                        background: "#f5f5f5", border: "1px solid #e8e8e8",
+                        cursor: "pointer", fontWeight: 700, fontSize: 14, color: "#777",
+                      }}>Close</button>
+                      <button onClick={() => setEditingName(true)} style={{
+                        flex: 2, padding: "12px 0", borderRadius: 30,
+                        background: INK, border: "none", cursor: "pointer",
+                        color: "#fff", fontWeight: 800, fontSize: 14,
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>edit</span>
+                        Edit Profile
+                      </button>
+                    </>
+                  )}
                 </div>
                 <div style={{ marginTop: 16, borderTop: "1px solid #f5f5f5", paddingTop: 16 }}>
                   {!confirmDelete ? (
@@ -973,7 +1443,7 @@ export default function MainPage() {
 
                 {/* Rankings content */}
                 {(() => {
-                  const ranked = getHistoryScores(historyDate);
+                  const ranked = historyScores;
                   const RANK_COLORS = ["#C9A857", "#8b9cb8", "#c97b3a"];
                   const MEDALS = ["🥇", "🥈", "🥉"];
 
@@ -1005,7 +1475,7 @@ export default function MainPage() {
                         </div>
                         {/* Image — fills flex space */}
                         <div style={{ position: "relative", width: "100%", flex: 1, minHeight: 0 }}>
-                          <Image src={`/idle/${char.file}`} alt={char.name} fill
+                          <Image src={`/idle/${char.file.toLowerCase()}`} alt={char.name} fill
                             style={{ objectFit: "contain", filter: isFirst ? `drop-shadow(0 4px 12px ${char.color}88)` : "none" }} />
                         </div>
                         {/* Name */}
@@ -1022,11 +1492,16 @@ export default function MainPage() {
                     );
                   };
 
-                  if (!ranked) return (
+                  if (historyLoading || ranked === null) return (
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "#f8f8fc" }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#bbb" }}>Loading…</div>
+                    </div>
+                  );
+                  if (ranked.length === 0) return (
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f8f8fc" }}>
                       <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: "#555" }}>No check-in for this date</div>
-                      <div style={{ fontSize: 13, marginTop: 6, color: "#aaa" }}>Complete a daily check-in to see rankings</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: "#555" }}>No scores for this date</div>
+                      <div style={{ fontSize: 13, marginTop: 6, color: "#aaa" }}>Complete the personality quiz to see rankings</div>
                     </div>
                   );
 
@@ -1319,13 +1794,31 @@ function CharNode({ char, hovered, onEnter, onLeave, onClick }) {
         }} />
       </div>
       <div ref={imgRef} style={{ position: "relative", width: w, height: char.imgH }}>
-        <Image src={`/idle/${char.file}`} alt={char.name} fill
+        <Image src={`/idle/${char.file.toLowerCase()}`} alt={char.name} fill
           style={{
             objectFit: "contain",
             filter: `drop-shadow(0 ${char.isMain ? 18 : 10}px ${char.isMain ? 28 : 14}px rgba(0,0,0,.14))`,
           }}
           priority={char.isMain}
         />
+        {!char.noLevel && (
+          <div style={{
+            position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)",
+            display: "flex", alignItems: "center", gap: 5,
+            background: "rgba(255,255,255,0.92)", borderRadius: 20,
+            padding: "3px 10px", backdropFilter: "blur(6px)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.12)", whiteSpace: "nowrap",
+          }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: char.color }}>Lv.{char.level}</span>
+            {char.score != null && char.score !== char.level ? (
+              <span style={{ fontSize: 11, fontWeight: 700, color: char.score > char.level ? "#22c55e" : "#ef4444" }}>
+                {char.score > char.level ? `▲${char.score}` : `▼${char.score}`}
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#aaa" }}>{char.score ?? char.level} pts</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

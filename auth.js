@@ -69,6 +69,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         } catch (err) {
           console.error("Failed to upsert user:", err);
         }
+      } else if (!token.dbId && token.email) {
+        // Backfill dbId for sessions created before this field was added
+        try {
+          const pool = await getPool();
+          const res = await pool.request()
+            .input("email", sql.NVarChar, token.email)
+            .query("SELECT id, personality_type FROM users WHERE email = @email");
+          if (res.recordset.length > 0) {
+            token.dbId = res.recordset[0].id;
+            token.hasOnboarded = !!res.recordset[0].personality_type;
+          }
+        } catch (err) {
+          console.error("Failed to backfill dbId:", err);
+        }
       }
       return token;
     },

@@ -59,6 +59,16 @@ const CHARS = [
   },
 ];
 
+const AVATAR_OPTIONS = [
+  ...CHARS.map(c => ({ key: c.id, name: c.name, color: c.color, src: `/idle/${c.file.toLowerCase()}`, variant: "Classic" })),
+  ...CHARS.filter(c => c.id !== "wisey").map(c => ({ key: `${c.id}-winner`, name: c.name, color: c.color, src: `/winner/${c.id}-winner.png`, variant: "Winner" })),
+];
+
+function getAvatarSrc(key) {
+  const opt = AVATAR_OPTIONS.find(o => o.key === key);
+  return opt ? opt.src : "/idle/wisey.png";
+}
+
 const EMPTY_STATS = [
   { icon: "🌙", label: "Sleep", short: "—", pct: 0, color: "#8b5cf6" },
   { icon: "💼", label: "Work",  short: "—", pct: 0, color: "#f59e0b" },
@@ -223,10 +233,19 @@ export default function MainPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [avatar, setAvatar]         = useState("wisey");
   const [userName, setUserName]     = useState("You");
+  const [userUsername, setUserUsername] = useState("");
   const [editName, setEditName]     = useState("You");
   const [editAvatar, setEditAvatar] = useState("wisey");
   const [savingProfile, setSavingProfile] = useState(false);
+  const [editingName, setEditingName] = useState(false);
   const [emochiScores, setEmochiScores] = useState({});
+  const [profileMbti, setProfileMbti] = useState(null);
+  const [profileInterests, setProfileInterests] = useState([]);
+  const [allInterests, setAllInterests] = useState([]);
+  const [editInterests, setEditInterests] = useState([]);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [cardFlipped, setCardFlipped] = useState(false);
 
   // Friends feature state
   const [friendsList, setFriendsList]         = useState([]);
@@ -245,7 +264,9 @@ export default function MainPage() {
   const [selectedWork, setSelectedWork]         = useState(null);
   const [checkinDone, setCheckinDone]           = useState(false);
   const [cloudTab, setCloudTab]                 = useState(0); // 0=Mood 1=Sleep 2=Work
+  const [wiseyTips, setWiseyTips]               = useState(null); // array of suggestions or null
   const [wiseyIdx, setWiseyIdx]                 = useState(0);
+  const [wiseyLoading, setWiseyLoading]         = useState(false);
 
   useEffect(() => {
     const upd = () =>
@@ -277,15 +298,18 @@ export default function MainPage() {
       .catch(() => {});
   }, []);
 
-  // Auto-cycle cloud tab and Wisey tip every 4 seconds
+  // Auto-cycle the cloud stat widget every 4 seconds
   useEffect(() => {
-    const id = setInterval(() => {
-      setCloudTab(t => (t + 1) % 3);
-      setWiseyIdx(i => i + 1);
-    }, 4000);
+    const id = setInterval(() => setCloudTab(t => (t + 1) % 3), 4000);
     return () => clearInterval(id);
   }, []);
 
+hy  // Auto-cycle through Wisey's suggestions (when there's more than one) every 5 seconds
+  useEffect(() => {
+    if (!wiseyTips || wiseyTips.length <= 1) return;
+    const id = setInterval(() => setWiseyIdx(i => (i + 1) % wiseyTips.length), 5000);
+    return () => clearInterval(id);
+  }, [wiseyTips]);
   // Fetch history scores from DB whenever the panel opens or date changes
   useEffect(() => {
     if (!historyOpen) return;
@@ -355,7 +379,7 @@ export default function MainPage() {
     return s ? { ...c, score: s.score, level: s.level } : c;
   });
 
-  const currentChar = enrichedChars.find(c => c.id === avatar) ?? enrichedChars[4];
+  const currentChar = enrichedChars.find(c => c.id === (avatar ?? "").replace(/-winner$/, "")) ?? enrichedChars[4];
   const PANEL_W = 248;
 
   async function sendFriendRequest(toUserId) {
@@ -438,7 +462,26 @@ export default function MainPage() {
     setEditName(userName);
     setEditAvatar(avatar);
     setConfirmDelete(false);
+    setEditingName(false);
+    setEditingProfile(false);
+    setAvatarPickerOpen(false);
+    setCardFlipped(false);
     setProfile(true);
+    // Fetch full profile (mbti + interests)
+    fetch("/api/user")
+      .then(r => r.json())
+      .then(data => {
+        setProfileMbti(data.mbti ?? null);
+        setProfileInterests(data.interests ?? []);
+        setEditInterests(data.interests ?? []);
+        if (data.username) setUserUsername(data.username);
+      })
+      .catch(() => {});
+    // Fetch all available interests
+    fetch("/api/interests")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setAllInterests(data.map(i => i.name)); })
+      .catch(() => {});
   }
 
   async function deleteAccount() {
@@ -446,17 +489,45 @@ export default function MainPage() {
     signOut({ callbackUrl: "/" });
   }
 
-  async function saveProfile() {
-    setSavingProfile(true);
+  // Save avatar immediately when picked — no need to hit Save button
+  async function saveAvatar(key) {
+    setEditAvatar(key);
+    setAvatarPickerOpen(false);
     try {
       await fetch("/api/user", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ displayName: editName.trim() || null, avatar: editAvatar }),
+        body: JSON.stringify({ displayName: userName, avatar: key }),
       });
-      setUserName(editName.trim() || "You");
-      setAvatar(editAvatar);
-      setProfile(false);
+      setAvatar(key);
+    } catch {}
+  }
+
+  // Save display name inline from the front face
+  async function saveDisplayName() {
+    const name = editName.trim() || null;
+    setEditingName(false);
+    try {
+      await fetch("/api/user", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: name, avatar }),
+      });
+      setUserName(name || "You");
+    } catch {}
+  }
+
+  // Save interests only (avatar + name have their own save paths now)
+  async function saveProfile() {
+    setSavingProfile(true);
+    try {
+      await fetch("/api/interests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interests: editInterests }),
+      });
+      setProfileInterests(editInterests);
+      setEditingProfile(false);
     } finally {
       setSavingProfile(false);
     }
@@ -479,6 +550,31 @@ export default function MainPage() {
       { icon: "💼", label: "Work",  short: work.short,  pct: work.pct,  color: "#f59e0b" },
       { icon: "😊", label: "Mood",  short: mood.emoji,  pct: mood.pct,  color: "#22c55e" },
     ]);
+    if (sleep.pct > 0) fetchWiseyTip(feelingIdxs, sleepIdx, workIdx, sleep, work, mood);
+  }
+
+  // Ask the real Wisey Foundry agent for several personalized insights using
+  // today's actual check-in data (sleep/work/mood + which emotions shifted).
+  // Falls back to the canned tips silently if Foundry is unreachable.
+  async function fetchWiseyTip(feelingIdxs, sleepIdx, workIdx, sleep, work, mood) {
+    setWiseyLoading(true);
+    try {
+      const deltas = calcDeltas(feelingIdxs, sleepIdx, workIdx);
+      const r = await fetch("/api/wisey-tip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userName, sleep, work, mood, deltas }),
+      });
+      const data = await r.json();
+      if (r.ok && data.replies?.length > 0) {
+        setWiseyTips(data.replies);
+        setWiseyIdx(0);
+      }
+    } catch {
+      // keep the canned fallback tip on any network/auth failure
+    } finally {
+      setWiseyLoading(false);
+    }
   }
 
   function submitCheckin() {
@@ -589,7 +685,7 @@ export default function MainPage() {
                   position: "relative", overflow: "hidden", flexShrink: 0,
                   boxShadow: `0 2px 8px ${currentChar.color}44`,
                 }}>
-                  <Image src={`/idle/${currentChar.file.toLowerCase()}`} alt={currentChar.name} fill style={{ objectFit: "cover" }} />
+                  <Image src={getAvatarSrc(avatar)} alt={currentChar.name} fill style={{ objectFit: "cover" }} />
                 </div>
                 <span style={{ color: INK, fontWeight: 700, fontSize: 15 }}>{userName}</span>
               </button>
@@ -839,60 +935,74 @@ export default function MainPage() {
               background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center",
             }} onClick={() => setFriendScores(null)}>
               <div style={{
-                background: "#fff", borderRadius: 28, padding: "28px 28px 24px",
-                width: 340, maxHeight: "80vh", overflowY: "auto",
+                background: "#fff", borderRadius: 28, padding: "24px 24px 20px",
+                width: 360,
                 boxShadow: "0 24px 64px rgba(0,0,0,.2)",
               }} onClick={e => e.stopPropagation()}>
                 {/* Friend header */}
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                   <div style={{
-                    width: 48, height: 48, borderRadius: "50%", background: "#e8e8f0",
-                    overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 40, height: 40, borderRadius: "50%", background: "#e8e8f0",
+                    overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
                   }}>
                     {friendScores.friend.avatar_emochi
                       ? <img src={`/idle/${friendScores.friend.avatar_emochi.toLowerCase()}.png`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      : <span className="material-symbols-outlined" style={{ fontSize: 26, color: "#aaa" }}>person</span>}
+                      : <span className="material-symbols-outlined" style={{ fontSize: 22, color: "#aaa" }}>person</span>}
                   </div>
                   <div>
-                    <div style={{ fontWeight: 800, fontSize: 16, color: INK }}>{friendScores.friend.display_name || friendScores.friend.username}</div>
-                    <div style={{ color: "#bbb", fontSize: 12 }}>@{friendScores.friend.username}</div>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: INK }}>{friendScores.friend.display_name || friendScores.friend.username}</div>
+                    <div style={{ color: "#bbb", fontSize: 11 }}>@{friendScores.friend.username}</div>
                   </div>
                   <button onClick={() => setFriendScores(null)} style={{
-                    marginLeft: "auto", width: 28, height: 28, borderRadius: "50%",
-                    background: "#f0f0f0", border: "none", cursor: "pointer", fontSize: 13, color: "#777",
+                    marginLeft: "auto", width: 26, height: 26, borderRadius: "50%",
+                    background: "#f0f0f0", border: "none", cursor: "pointer", fontSize: 12, color: "#777",
                   }}>✕</button>
                 </div>
-                <div style={{ fontWeight: 700, fontSize: 13, color: "#888", marginBottom: 12 }}>Emochi Squad</div>
+                <div style={{ fontWeight: 700, fontSize: 11, color: "#bbb", letterSpacing: 1.5, marginBottom: 10 }}>EMOCHI SQUAD</div>
                 {friendScoresLoading ? (
                   <div style={{ color: "#bbb", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Loading…</div>
                 ) : !friendScores.scores || Object.keys(friendScores.scores).length === 0 ? (
                   <div style={{ color: "#bbb", fontSize: 13, textAlign: "center", padding: "20px 0" }}>No scores yet</div>
                 ) : (
-                  CHARS.filter(c => !c.noLevel).map(c => {
-                    const data = friendScores.scores[c.id];
-                    const level = data?.level ?? 0;
-                    const score = data?.score ?? 0;
-                    return (
-                      <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                        <div style={{
-                          width: 36, height: 36, borderRadius: "50%", background: c.color + "22",
-                          border: `2px solid ${c.color}`, overflow: "hidden", flexShrink: 0,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                        }}>
-                          <img src={`/idle/${c.file.toLowerCase()}`} alt={c.name} style={{ width: 28, height: 28, objectFit: "contain" }} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: INK }}>{c.name}</span>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: c.color }}>Lv {level}</span>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px 8px" }}>
+                    {CHARS.filter(c => !c.noLevel).map(c => {
+                      const data = friendScores.scores[c.id];
+                      const level = data?.level ?? 0;
+                      const score = data?.score ?? 0;
+                      const pct = Math.min(score, 100);
+                      const r = 27;
+                      const circ = 2 * Math.PI * r;
+                      const filled = (pct / 100) * circ;
+                      return (
+                        <div key={c.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                          {/* Donut ring + avatar */}
+                          <div style={{ position: "relative", width: 62, height: 62 }}>
+                            <svg width="62" height="62" viewBox="0 0 62 62" style={{ position: "absolute", inset: 0 }}>
+                              <circle cx="31" cy="31" r={r} fill="none" stroke="#f0f0f0" strokeWidth="4.5" />
+                              <circle cx="31" cy="31" r={r} fill="none" stroke={c.color} strokeWidth="4.5"
+                                strokeDasharray={`${filled} ${circ - filled}`}
+                                strokeLinecap="round"
+                                transform="rotate(-90 31 31)"
+                                style={{ transition: "stroke-dasharray .6s ease" }}
+                              />
+                            </svg>
+                            <div style={{
+                              position: "absolute", inset: 7, borderRadius: "50%",
+                              background: c.color + "15", overflow: "hidden",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                            }}>
+                              <img src={`/idle/${c.file.toLowerCase()}`} alt={c.name}
+                                style={{ width: "88%", height: "88%", objectFit: "contain" }} />
+                            </div>
                           </div>
-                          <div style={{ height: 6, borderRadius: 3, background: "#f0f0f0", overflow: "hidden" }}>
-                            <div style={{ width: `${score}%`, height: "100%", borderRadius: 3, background: c.color, transition: "width .5s" }} />
+                          <div style={{ fontSize: 9, fontWeight: 700, color: INK, textAlign: "center", lineHeight: 1.2 }}>{c.name}</div>
+                          <div style={{ fontSize: 8, fontWeight: 700, color: "#bbb", textAlign: "center" }}>
+                            Lv.{level} <span style={{ color: c.color }}>▲{score}</span>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             </div>,
@@ -910,9 +1020,11 @@ export default function MainPage() {
 
           {/* ══ WISEY DAILY SUGGESTION ══ */}
           {(() => {
-            const wiseyChar = enrichedChars.find(c => c.id === "wisey");
-            const tips = getWiseySuggestions(stats);
-            const tip  = tips[wiseyIdx % tips.length];
+            const wiseyChar = CHARS.find(c => c.id === "wisey");
+            const tips = wiseyLoading
+              ? ["Thinking about your day…"]
+              : wiseyTips?.length > 0 ? wiseyTips : getWiseySuggestions(stats);
+            const tip = tips[wiseyIdx % tips.length];
             return (
               <div style={{
                 position: "absolute", top: 100, left: "50%",
@@ -931,22 +1043,39 @@ export default function MainPage() {
                   <Image src={`/idle/${wiseyChar.file.toLowerCase()}`} alt="Wisey" fill style={{ objectFit: "cover" }} />
                 </div>
                 {/* Message bubble */}
-                <div style={{
-                  background: "rgba(255,255,255,.92)",
-                  backdropFilter: "blur(14px)",
-                  borderRadius: "4px 20px 20px 20px",
-                  padding: "14px 22px 16px",
-                  boxShadow: "0 6px 28px rgba(0,0,0,.12)",
-                  border: `1px solid ${wiseyChar.color}30`,
-                }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: wiseyChar.color, letterSpacing: .3, marginBottom: 6 }}>
-                    Wisey
+                <div
+                  onClick={() => tips.length > 1 && setWiseyIdx(i => (i + 1) % tips.length)}
+                  style={{
+                    background: "rgba(255,255,255,.92)",
+                    backdropFilter: "blur(14px)",
+                    borderRadius: "4px 20px 20px 20px",
+                    padding: "14px 22px 16px",
+                    boxShadow: "0 6px 28px rgba(0,0,0,.12)",
+                    border: `1px solid ${wiseyChar.color}30`,
+                    cursor: tips.length > 1 ? "pointer" : "default",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: wiseyChar.color, letterSpacing: .3 }}>
+                      Wisey
+                    </div>
+                    {tips.length > 1 && (
+                      <div style={{ display: "flex", gap: 5 }}>
+                        {tips.map((_, i) => (
+                          <div key={i} style={{
+                            width: i === wiseyIdx % tips.length ? 14 : 6, height: 6, borderRadius: 4,
+                            background: i === wiseyIdx % tips.length ? wiseyChar.color : "#ddd",
+                            transition: "all .3s",
+                          }} />
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div
-                    key={wiseyIdx}
+                    key={tip}
                     style={{
                       fontSize: 16, fontWeight: 600, color: "#29293a",
-                      lineHeight: 1.6, maxWidth: 420,
+                      lineHeight: 1.6, maxWidth: 420, whiteSpace: "pre-wrap",
                       animation: "wiseyFade .4s ease",
                     }}
                   >
@@ -1166,117 +1295,284 @@ export default function MainPage() {
           </button>
 
           {/* ══ PROFILE MODAL ══ */}
-          {profileOpen && (
-            <div className="modal-overlay" onClick={() => setProfile(false)} style={{
-              position: "absolute", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 50,
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <div className="modal-card" onClick={e => e.stopPropagation()} style={{
-                width: 520, background: "#fff", borderRadius: 28,
-                boxShadow: "0 24px 60px rgba(0,0,0,.18)", padding: "28px 28px 24px",
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: INK }}>Edit Profile</div>
-                  <button onClick={() => setProfile(false)} style={{
-                    width: 30, height: 30, borderRadius: "50%",
-                    background: "#f4f4f4", border: "none", cursor: "pointer", fontSize: 13, color: "#777",
-                  }}>✕</button>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 22 }}>
-                  <div style={{
-                    width: 80, height: 80, borderRadius: "50%",
-                    background: (enrichedChars.find(c => c.id === editAvatar)?.color ?? "#ccc") + "22",
-                    border: `3px solid ${enrichedChars.find(c => c.id === editAvatar)?.color ?? "#ccc"}`,
-                    position: "relative", overflow: "hidden", flexShrink: 0,
-                    boxShadow: `0 4px 16px ${enrichedChars.find(c => c.id === editAvatar)?.color ?? "#ccc"}44`,
-                  }}>
-                    <Image src={`/idle/${enrichedChars.find(c => c.id === editAvatar)?.file.toLowerCase()}`} alt="avatar" fill style={{ objectFit: "cover" }} />
+          {profileOpen && createPortal(
+            <div
+              onClick={() => { setProfile(false); setAvatarPickerOpen(false); setCardFlipped(false); setEditingProfile(false); setEditingName(false); }}
+              style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", backdropFilter: "blur(10px)", zIndex: 9998, display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              {/* Avatar picker popup */}
+              {avatarPickerOpen && (
+                <div onClick={e => e.stopPropagation()} style={{
+                  position: "absolute", zIndex: 10000, background: "#fff", borderRadius: 24,
+                  padding: "20px 20px 16px", boxShadow: "0 20px 60px rgba(0,0,0,.28)",
+                  width: 370, maxHeight: "70vh", overflowY: "auto",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: INK }}>Choose Avatar</div>
+                    <button onClick={() => setAvatarPickerOpen(false)} style={{ width: 28, height: 28, borderRadius: "50%", background: "#f4f4f4", border: "none", cursor: "pointer", fontSize: 13, color: "#777" }}>✕</button>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 6 }}>DISPLAY NAME</div>
-                    <input
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
-                      maxLength={24}
-                      style={{
-                        width: "100%", padding: "10px 14px", borderRadius: 12,
-                        border: "1.5px solid #e8e8e8", fontSize: 15, fontWeight: 700,
-                        color: INK, outline: "none", fontFamily: "inherit", background: "#fafafa",
-                      }}
-                    />
-                  </div>
-                </div>
-                <div style={{ color: "#aaa", fontSize: 11, fontWeight: 700, marginBottom: 10 }}>CHOOSE AVATAR</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 22 }}>
-                  {enrichedChars.map(c => (
-                    <div key={c.id} className="picker-char" onClick={() => setEditAvatar(c.id)}
-                      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer" }}>
-                      <div style={{
-                        width: 72, height: 72, borderRadius: 14, background: c.color + "18",
-                        border: `2.5px solid ${editAvatar === c.id ? c.color : "transparent"}`,
-                        position: "relative", overflow: "hidden",
-                        boxShadow: editAvatar === c.id ? `0 0 0 3px ${c.color}44` : "none",
-                        transition: "box-shadow .15s, border-color .15s",
-                      }}>
-                        <Image src={`/idle/${c.file.toLowerCase()}`} alt={c.name} fill style={{ objectFit: "contain", padding: 4 }} />
+                  {["Classic", "Winner"].map(variant => (
+                    <div key={variant} style={{ marginBottom: 16 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: "#bbb", marginBottom: 8 }}>{variant.toUpperCase()}</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+                        {AVATAR_OPTIONS.filter(o => o.variant === variant).map(o => (
+                          <div key={o.key} onClick={() => saveAvatar(o.key)}
+                            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                            <div style={{
+                              width: 64, height: 64, borderRadius: 14, background: o.color + "18",
+                              border: `2.5px solid ${editAvatar === o.key ? o.color : "transparent"}`,
+                              position: "relative", overflow: "hidden",
+                              boxShadow: editAvatar === o.key ? `0 0 0 3px ${o.color}44` : "none",
+                              transition: "box-shadow .15s, border-color .15s",
+                            }}>
+                              <Image src={o.src} alt={o.name} fill style={{ objectFit: "contain", padding: 4 }} />
+                            </div>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: editAvatar === o.key ? o.color : "#aaa" }}>{o.name}</span>
+                          </div>
+                        ))}
                       </div>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: editAvatar === c.id ? c.color : "#aaa" }}>{c.name}</span>
                     </div>
                   ))}
                 </div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={() => setProfile(false)} style={{
-                    flex: 1, padding: "12px 0", borderRadius: 30,
-                    background: "#f5f5f5", border: "1px solid #e8e8e8",
-                    cursor: "pointer", fontWeight: 700, fontSize: 14, color: "#777",
-                  }}>Cancel</button>
-                  <button onClick={saveProfile} style={{
-                    flex: 2, padding: "12px 0", borderRadius: 30,
-                    background: "linear-gradient(90deg,#ff8a3d,#ff5e7a)",
-                    border: "none", cursor: savingProfile ? "not-allowed" : "pointer",
-                    color: "#fff", fontWeight: 800, fontSize: 14, opacity: savingProfile ? 0.7 : 1,
-                  }} disabled={savingProfile}>{savingProfile ? "Saving…" : "Save Changes"}</button>
-                </div>
-                <div style={{ marginTop: 16, borderTop: "1px solid #f5f5f5", paddingTop: 16 }}>
-                  {!confirmDelete ? (
-                    <button onClick={() => setConfirmDelete(true)} style={{
-                      width: "100%", padding: "11px 0", borderRadius: 30,
-                      background: "none", border: "1.5px solid #fca5a5",
-                      cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#ef4444",
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-                    }}>
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                        <path d="M10 11v6M14 11v6" />
-                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                      </svg>
-                      Delete Account
-                    </button>
-                  ) : (
+              )}
+
+              {/* ── Flip card ── */}
+              {(() => {
+                const baseId = (editAvatar ?? "wisey").replace(/-winner$/, "");
+                const avatarChar = enrichedChars.find(c => c.id === baseId) ?? enrichedChars[4];
+                const aColor = avatarChar?.color ?? "#C9A857";
+                const avatarSrc = getAvatarSrc(editAvatar);
+                const GOLD = "linear-gradient(145deg, #f5e07a, #C9A857, #8a6a1f, #e0c070, #C9A857, #f5e07a)";
+                const CARD_H = 460;
+                return (
+                  <div style={{ perspective: "1000px", width: 360 }} onClick={e => e.stopPropagation()}>
                     <div style={{
-                      background: "#fff5f5", border: "1.5px solid #fca5a5",
-                      borderRadius: 16, padding: "14px 16px",
+                      position: "relative", width: 360, height: CARD_H,
+                      transformStyle: "preserve-3d",
+                      transition: "transform 0.55s cubic-bezier(0.4,0,0.2,1)",
+                      transform: cardFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
                     }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "#ef4444", marginBottom: 4 }}>Are you sure?</div>
-                      <div style={{ fontSize: 12, color: "#999", marginBottom: 12 }}>This will permanently delete your account and all your data.</div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button onClick={() => setConfirmDelete(false)} style={{
-                          flex: 1, padding: "9px 0", borderRadius: 30,
-                          background: "#f5f5f5", border: "1px solid #e8e8e8",
-                          cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#777",
-                        }}>Cancel</button>
-                        <button onClick={deleteAccount} style={{
-                          flex: 1, padding: "9px 0", borderRadius: 30,
-                          background: "#ef4444", border: "none",
-                          cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#fff",
-                        }}>Yes, delete</button>
+
+                      {/* ══ FRONT FACE ══ */}
+                      <div
+                        onClick={() => { setAvatarPickerOpen(false); setCardFlipped(true); }}
+                        style={{
+                          position: "absolute", inset: 0, backfaceVisibility: "hidden", cursor: "pointer",
+                          background: GOLD, borderRadius: 28, padding: 3,
+                          boxShadow: `0 28px 70px rgba(0,0,0,.4), 0 0 40px ${aColor}33`,
+                        }}
+                      >
+                        <div style={{ background: "#fdfcf8", borderRadius: 26, height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                          {/* Art banner */}
+                          <div style={{
+                            position: "relative", height: 220, flexShrink: 0,
+                            background: `radial-gradient(ellipse at 50% 110%, ${aColor}55 0%, ${aColor}22 50%, #f0ede4 100%)`,
+                            display: "flex", alignItems: "flex-end", justifyContent: "center", overflow: "hidden",
+                          }}>
+                            <div style={{ position: "absolute", width: 300, height: 300, borderRadius: "50%", border: `1.5px solid ${aColor}22`, top: "50%", left: "50%", transform: "translate(-50%,-50%)" }} />
+                            <div style={{ position: "absolute", width: 210, height: 210, borderRadius: "50%", border: `1.5px solid ${aColor}33`, top: "50%", left: "50%", transform: "translate(-50%,-50%)" }} />
+                            <div onClick={e => { e.stopPropagation(); setAvatarPickerOpen(o => !o); }} style={{ position: "relative", width: 168, height: 168, cursor: "pointer", flexShrink: 0 }}>
+                              <Image src={avatarSrc} alt="avatar" fill style={{ objectFit: "contain", filter: `drop-shadow(0 8px 24px ${aColor}88)` }} />
+                              <div style={{ position: "absolute", bottom: 6, right: 6, width: 28, height: 28, borderRadius: "50%", background: "#fff", border: `2px solid ${aColor}`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,.18)" }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 14, color: aColor }}>photo_camera</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Body */}
+                          <div style={{ padding: "16px 22px 0", flex: 1, display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+                            {/* Name + edit */}
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                              {editingName ? (
+                                <>
+                                  <input autoFocus value={editName} onChange={e => setEditName(e.target.value)} maxLength={24}
+                                    style={{ flex: 1, padding: "5px 10px", borderRadius: 10, border: `1.5px solid ${aColor}`, fontSize: 18, fontWeight: 900, color: INK, outline: "none", fontFamily: "inherit", background: "#fff" }} />
+                                  <button onClick={saveDisplayName} style={{ padding: "5px 12px", borderRadius: 20, border: "none", cursor: "pointer", background: aColor, color: "#fff", fontWeight: 700, fontSize: 11, flexShrink: 0 }}>Save</button>
+                                  <button onClick={() => { setEditName(userName); setEditingName(false); }} style={{ padding: "5px 8px", borderRadius: 20, border: "none", cursor: "pointer", background: "#f0f0ee", color: "#888", fontWeight: 700, fontSize: 11, flexShrink: 0 }}>✕</button>
+                                </>
+                              ) : (
+                                <>
+                                  <div style={{ fontSize: 20, fontWeight: 900, color: INK, letterSpacing: -.3 }}>{editName}</div>
+                                  <button onClick={() => setEditingName(true)} style={{ width: 28, height: 28, borderRadius: "50%", border: "none", cursor: "pointer", background: aColor + "18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: 14, color: aColor }}>edit</span>
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            {userUsername && <div style={{ fontSize: 11, color: "#aaa", fontWeight: 600, marginBottom: 14 }}>@{userUsername}</div>}
+                            <div style={{ height: 1, background: `linear-gradient(90deg, ${aColor}44, transparent)`, marginBottom: 14 }} />
+
+                            {/* MBTI */}
+                            <div style={{ textAlign: "center", marginBottom: 14 }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: "#bbb", marginBottom: 4 }}>PERSONALITY TYPE</div>
+                              {profileMbti
+                                ? <div style={{ fontSize: 34, fontWeight: 900, letterSpacing: 8, color: aColor, lineHeight: 1 }}>{profileMbti}</div>
+                                : <div style={{ fontSize: 11, color: "#ccc" }}>Take the quiz to discover your type</div>}
+                            </div>
+
+                            <div style={{ flex: 1 }} />
+                            {/* Bottom row */}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 16 }}>
+                              {!confirmDelete ? (
+                                <button onClick={e => { e.stopPropagation(); setConfirmDelete(true); }} title="Delete account" style={{ width: 32, height: 32, borderRadius: "50%", border: "none", cursor: "pointer", background: "#fff0f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                                  </svg>
+                                </button>
+                              ) : (
+                                <div onClick={e => e.stopPropagation()} style={{ flex: 1, background: "#fff5f5", border: "1.5px solid #fca5a5", borderRadius: 14, padding: "10px 12px" }}>
+                                  <div style={{ fontSize: 11, fontWeight: 800, color: "#ef4444", marginBottom: 2 }}>Delete account?</div>
+                                  <div style={{ fontSize: 10, color: "#aaa", marginBottom: 8 }}>This cannot be undone.</div>
+                                  <div style={{ display: "flex", gap: 6 }}>
+                                    <button onClick={() => setConfirmDelete(false)} style={{ flex: 1, padding: "6px 0", borderRadius: 16, background: "#f0f0f0", border: "none", cursor: "pointer", fontWeight: 700, fontSize: 10, color: "#777" }}>Cancel</button>
+                                    <button onClick={deleteAccount} style={{ flex: 1, padding: "6px 0", borderRadius: 16, background: "#ef4444", border: "none", cursor: "pointer", fontWeight: 700, fontSize: 10, color: "#fff" }}>Yes, delete</button>
+                                  </div>
+                                </div>
+                              )}
+                              {!confirmDelete && (
+                              <button
+                                onClick={e => { e.stopPropagation(); setCardFlipped(true); }}
+                                style={{
+                                  display: "flex", alignItems: "center", gap: 5,
+                                  padding: "6px 14px", borderRadius: 20, border: `1.5px solid ${aColor}44`,
+                                  background: aColor + "12", cursor: "pointer", color: aColor,
+                                  fontWeight: 700, fontSize: 11,
+                                }}>
+                                Interests
+                                <span style={{ fontSize: 13 }}>→</span>
+                              </button>
+                            )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
+
+                      {/* ══ BACK FACE ══ */}
+                      <div
+                        onClick={() => !editingProfile && setCardFlipped(false)}
+                        style={{
+                          position: "absolute", inset: 0, backfaceVisibility: "hidden",
+                          transform: "rotateY(180deg)", cursor: editingProfile ? "default" : "pointer",
+                          background: GOLD, borderRadius: 28, padding: 3,
+                          boxShadow: `0 28px 70px rgba(0,0,0,.4), 0 0 40px ${aColor}33`,
+                        }}
+                      >
+                        <div style={{ background: "#fdfcf8", borderRadius: 26, height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+
+                          {/* Decorative top band */}
+                          <div style={{
+                            height: 8, flexShrink: 0,
+                            background: `linear-gradient(90deg, ${aColor}88, ${aColor}22, ${aColor}88)`,
+                          }} />
+
+                          <div style={{ padding: "18px 22px 18px", flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                            {/* Header */}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }} onClick={e => e.stopPropagation()}>
+                              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: "#bbb" }}>INTERESTS</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                {!editingProfile && (
+                                  <button onClick={() => { setEditInterests([...profileInterests]); setEditingProfile(true); }}
+                                    style={{ width: 28, height: 28, borderRadius: "50%", border: "none", cursor: "pointer", background: aColor + "18", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: 14, color: aColor }}>edit</span>
+                                  </button>
+                                )}
+                                <button onClick={() => setCardFlipped(false)}
+                                  style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 12px", borderRadius: 20, border: "1.5px solid #e0e0e0", cursor: "pointer", background: "#f5f5f3", fontSize: 11, fontWeight: 700, color: "#888" }}>← Back</button>
+                              </div>
+                            </div>
+
+                            {/* Interests content */}
+                            <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+                              {editingProfile ? (
+                                <>
+                                  <div style={{ fontSize: 10, fontWeight: 700, marginBottom: 10, color: editInterests.length === 5 ? "#22c55e" : aColor }}>
+                                    {editInterests.length}/5{editInterests.length < 5 ? ` — pick ${5 - editInterests.length} more` : " ✓"}
+                                  </div>
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, overflowY: "auto", flex: 1, alignContent: "flex-start" }}>
+                                    {allInterests.map(name => {
+                                      const active = editInterests.includes(name);
+                                      const maxed = editInterests.length >= 5 && !active;
+                                      return (
+                                        <button key={name} disabled={maxed} onClick={() => {
+                                          if (active) setEditInterests(prev => prev.filter(i => i !== name));
+                                          else if (editInterests.length < 5) setEditInterests(prev => [...prev, name]);
+                                        }} style={{
+                                          padding: "6px 14px", borderRadius: 20, cursor: maxed ? "not-allowed" : "pointer",
+                                          border: `1.5px solid ${active ? aColor : "#e0e0e0"}`,
+                                          background: active ? aColor + "18" : "#f7f7f5",
+                                          color: active ? aColor : maxed ? "#ccc" : "#999",
+                                          fontWeight: 700, fontSize: 11, opacity: maxed ? 0.4 : 1, transition: "all .12s",
+                                        }}>{name}</button>
+                                      );
+                                    })}
+                                  </div>
+                                  <div style={{ display: "flex", gap: 8, marginTop: 14, flexShrink: 0 }}>
+                                    <button onClick={() => { setEditInterests([...profileInterests]); setEditingProfile(false); }} style={{ flex: 1, padding: "10px 0", borderRadius: 30, background: "#f0f0ee", border: "none", cursor: "pointer", fontWeight: 700, fontSize: 12, color: "#888" }}>Cancel</button>
+                                    <button onClick={saveProfile} disabled={savingProfile || editInterests.length !== 5} style={{
+                                      flex: 2, padding: "10px 0", borderRadius: 30,
+                                      background: `linear-gradient(90deg, ${aColor}, #e0c070)`,
+                                      border: "none", cursor: (savingProfile || editInterests.length !== 5) ? "not-allowed" : "pointer",
+                                      color: "#fff", fontWeight: 800, fontSize: 12,
+                                      opacity: (savingProfile || editInterests.length !== 5) ? 0.5 : 1,
+                                    }}>{savingProfile ? "Saving…" : "Save"}</button>
+                                  </div>
+                                </>
+                              ) : profileInterests.length > 0 ? (
+                                <>
+                                  {/* 2-col grid of big chips */}
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+                                    {profileInterests.map((name, i) => (
+                                      <div key={name} style={{
+                                        padding: "14px 12px", borderRadius: 18,
+                                        background: i % 2 === 0 ? aColor + "16" : aColor + "0c",
+                                        border: `1.5px solid ${aColor}33`,
+                                        display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center",
+                                        color: aColor, fontWeight: 800, fontSize: 13, lineHeight: 1.2,
+                                        boxShadow: `0 2px 8px ${aColor}18`,
+                                      }}>{name}</div>
+                                    ))}
+                                  </div>
+
+                                  {/* Footer strip — mini avatar + name + MBTI */}
+                                  <div style={{ flexShrink: 0, marginTop: "auto" }}>
+                                    <div style={{ height: 1, background: `linear-gradient(90deg, transparent, ${aColor}33, transparent)`, marginBottom: 14 }} />
+                                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                      <div style={{ width: 52, height: 52, borderRadius: "50%", flexShrink: 0, position: "relative", background: aColor + "18", border: `2px solid ${aColor}44`, overflow: "hidden" }}>
+                                        <Image src={avatarSrc} alt="avatar" fill style={{ objectFit: "contain", padding: 4 }} />
+                                      </div>
+                                      <div>
+                                        <div style={{ fontWeight: 900, fontSize: 14, color: INK, marginBottom: 2 }}>{editName}</div>
+                                        {userUsername && <div style={{ fontSize: 10, color: "#bbb", fontWeight: 600, marginBottom: 4 }}>@{userUsername}</div>}
+                                        {profileMbti && (
+                                          <div style={{ display: "inline-block", padding: "2px 10px", borderRadius: 10, background: aColor + "18", border: `1px solid ${aColor}44`, fontSize: 11, fontWeight: 800, color: aColor, letterSpacing: 2 }}>{profileMbti}</div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
+                                  <div style={{ width: 80, height: 80, borderRadius: "50%", background: aColor + "12", border: `2px dashed ${aColor}44`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: 36, color: aColor + "88" }}>interests</span>
+                                  </div>
+                                  <div style={{ fontSize: 13, color: "#bbb", fontWeight: 600, textAlign: "center" }}>No interests yet</div>
+                                  <button onClick={() => { setEditInterests([]); setEditingProfile(true); }} style={{
+                                    padding: "8px 20px", borderRadius: 20, border: "none", cursor: "pointer",
+                                    background: aColor, color: "#fff", fontWeight: 700, fontSize: 12,
+                                  }}>Add interests</button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
                     </div>
-                  )}
-                </div>
-              </div>
-            </div>
+                  </div>
+                );
+              })()}
+            </div>,
+            document.body
           )}
 
           {/* ══ HISTORY MODAL ══ */}

@@ -35,8 +35,9 @@ export async function GET(req) {
             CASE
               WHEN EXISTS (
                 SELECT 1 FROM friendships
-                WHERE (user_id_1 = @self_id AND user_id_2 = u.id)
-                   OR (user_id_1 = u.id    AND user_id_2 = @self_id)
+                WHERE ((user_id = @self_id AND friend_id = u.id)
+                   OR (user_id = u.id    AND friend_id = @self_id))
+                  AND status = 'accepted'
               ) THEN 'friends'
               WHEN EXISTS (
                 SELECT 1 FROM friend_requests

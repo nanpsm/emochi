@@ -41,6 +41,10 @@ export default function DebatePage() {
   const [verdictOpen, setVerdictOpen] = useState(false);
   const [verdictChat, setVerdictChat] = useState([]);
   const [verdictReply, setVerdictReply] = useState("");
+  const [resultOpen, setResultOpen] = useState(false);
+  const [resultData, setResultData] = useState(null); // { increase: [], decrease: [] }
+  const [resultLoading, setResultLoading] = useState(false);
+  const [bonkOpen, setBonkOpen] = useState(false);
 
 
   useEffect(() => {
@@ -165,10 +169,31 @@ export default function DebatePage() {
     if (!text) return;
     setVerdictChat((chat) => [...chat, { from: "user", text }]);
     setVerdictReply("");
-    setTimeout(() => {
-      setVerdictChat((chat) => [...chat, { from: "wisey", text: "At your service." }]);
-      setTimeout(() => setVerdictOpen(false), 1600);
-    }, 500);
+  }
+
+  async function endDebate() {
+    const userOpinion = verdictChat.filter(m => m.from === "user").map(m => m.text).join(" ");
+    setVerdictOpen(false);
+    setResultLoading(true);
+    setBonkOpen(true);
+
+    try {
+      const res = await fetch("/api/debate/verdict-result", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decision: userOpinion || "no opinion given",
+          topic: topicSummary,
+          verdictText: wiseyVerdict,
+        }),
+      });
+      const data = await res.json();
+      setResultData(data.error ? null : data);
+    } catch {
+      setResultData(null);
+    } finally {
+      setResultLoading(false);
+    }
   }
 
   const speaker = CHARACTERS.find((character) => character.id === activeSpeaker);
@@ -374,15 +399,104 @@ export default function DebatePage() {
                 <input
                   value={verdictReply}
                   onChange={(event) => setVerdictReply(event.target.value)}
-                  placeholder="Accept, reject, or say anything…"
+                  placeholder="Share your thoughts…"
                   aria-label="Reply to Wisey"
                 />
                 <button type="submit" aria-label="Send" disabled={!verdictReply.trim()}>
                   <span className="material-symbols-outlined" aria-hidden="true">arrow_upward</span>
                 </button>
+                <button type="button" className="end-debate-btn" onClick={endDebate}>
+                  End Debate
+                </button>
               </form>
             </div>
           </div>
+        </div>
+      )}
+
+      {bonkOpen && (
+        <div className="result-overlay">
+          {/* ── Bonk animation phase ── */}
+          {(resultLoading || !resultData) ? (
+            <div className="bonk-loading">
+              <img src="/idle/wisey.png" alt="Wisey" className="bonk-wisey-spin" />
+              <p>Wisey is deciding…</p>
+            </div>
+          ) : !resultOpen ? (
+            (() => {
+              const winners = resultData.increase.map(n => CHARACTERS.find(c => c.name === n)).filter(Boolean);
+              const losers  = resultData.decrease.map(n => CHARACTERS.find(c => c.name === n)).filter(Boolean);
+              return (
+                <div className="bonk-stage" ref={el => { if (el && !resultOpen) setTimeout(() => setResultOpen(true), 3800); }}>
+                  {winners.map((w, i) => (
+                    <div key={w.id} className="bonk-pair" style={{ animationDelay: `${i * 0.25}s` }}>
+                      <div className="bonk-char bonk-attacker" style={{ animationDelay: `${i * 0.25}s` }}>
+                        <img src={`/gif/${w.id}-bonk.gif`} alt={w.name} />
+                        <span className="bonk-char-name" style={{ color: w.color }}>{w.name}</span>
+                      </div>
+                      <div className="bonk-impact">💥</div>
+                      {losers[i] && (
+                        <div className="bonk-char bonk-victim" style={{ animationDelay: `${i * 0.25 + 0.5}s` }}>
+                          <img src={`/idle/${losers[i].file}`} alt={losers[i].name} />
+                          <span className="bonk-char-name" style={{ color: losers[i].color }}>{losers[i].name}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()
+          ) : (
+            /* ── Result screen ── */
+            <div className="rm" onClick={e => e.stopPropagation()}>
+              <div className="rm-title">Debate Results</div>
+              <div className="rm-sub">Here&apos;s how your decision shaped your emotions</div>
+
+              <div className="rm-cols">
+                {/* Increase column */}
+                <div className="rm-col rm-col-inc">
+                  <div className="rm-col-label">▲ +3</div>
+                  {resultData.increase.map(name => {
+                    const char = CHARACTERS.find(c => c.name === name);
+                    if (!char) return null;
+                    return (
+                      <div key={name} className="rm-card rm-card-inc">
+                        <div className="rm-avatar" style={{ borderColor: char.color, background: char.color + "22" }}>
+                          <img src={`/idle/${char.file}`} alt={char.name} />
+                        </div>
+                        <span className="rm-name" style={{ color: char.color }}>{char.name}</span>
+                        <span className="rm-delta rm-delta-inc">+3</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="rm-divider" />
+
+                {/* Decrease column */}
+                <div className="rm-col rm-col-dec">
+                  <div className="rm-col-label rm-col-label-dec">▼ −3</div>
+                  {resultData.decrease.map(name => {
+                    const char = CHARACTERS.find(c => c.name === name);
+                    if (!char) return null;
+                    return (
+                      <div key={name} className="rm-card rm-card-dec">
+                        <div className="rm-avatar" style={{ borderColor: char.color, background: char.color + "22" }}>
+                          <img src={`/idle/${char.file}`} alt={char.name} />
+                        </div>
+                        <span className="rm-name" style={{ color: char.color }}>{char.name}</span>
+                        <span className="rm-delta rm-delta-dec">−3</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <Link href="/home" className="rm-btn">
+                Back to Home
+              </Link>
+            </div>
+          )}
         </div>
       )}
 
@@ -563,7 +677,7 @@ export default function DebatePage() {
           font: inherit;
           font-size: 14px;
         }
-        .verdict-reply-form button {
+        .verdict-reply-form button[type="submit"] {
           width: 42px;
           height: 42px;
           flex: 0 0 42px;
@@ -577,7 +691,7 @@ export default function DebatePage() {
           justify-content: center;
           cursor: pointer;
         }
-        .verdict-reply-form button:disabled { opacity: .5; cursor: default; }
+        .verdict-reply-form button[type="submit"]:disabled { opacity: .5; cursor: default; }
         @keyframes hammer-float {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-10px); }
@@ -851,6 +965,233 @@ export default function DebatePage() {
         @media (prefers-reduced-motion: reduce) {
           .character.is-speaking, .speech-bubble, .hammer-badge { animation: none; }
         }
+
+        /* ── End Debate button ── */
+        .end-debate-btn {
+          flex-shrink: 0;
+          padding: 0 16px;
+          height: 44px;
+          border: none;
+          border-radius: 30px;
+          background: #4d351e;
+          color: #fff9e9;
+          font: inherit;
+          font-size: 13px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: opacity .15s;
+          white-space: nowrap;
+        }
+        .end-debate-btn:hover { opacity: .82; }
+
+        /* ── Bonk animation ── */
+        @keyframes attacker-swing {
+          0%   { transform: translateX(-60px) rotate(-15deg); opacity: 0; }
+          40%  { transform: translateX(20px) rotate(10deg); opacity: 1; }
+          55%  { transform: translateX(0px) rotate(0deg); }
+          70%  { transform: translateX(10px) rotate(5deg); }
+          100% { transform: translateX(0px) rotate(0deg); }
+        }
+        @keyframes victim-shake {
+          0%   { transform: translateX(0); }
+          20%  { transform: translateX(8px) rotate(6deg); }
+          40%  { transform: translateX(-6px) rotate(-4deg); }
+          60%  { transform: translateX(5px) rotate(3deg); }
+          80%  { transform: translateX(-3px) rotate(-2deg); }
+          100% { transform: translateX(0) rotate(0); }
+        }
+        @keyframes stars-pop {
+          0%   { transform: scale(0) rotate(-20deg); opacity: 0; }
+          50%  { transform: scale(1.4) rotate(10deg); opacity: 1; }
+          80%  { transform: scale(1) rotate(0deg); opacity: 1; }
+          100% { transform: scale(.8) rotate(0deg); opacity: 0; }
+        }
+        .bonk-loading {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 16px;
+          color: #fff9e9;
+          font-size: 17px;
+          font-weight: 700;
+        }
+        .bonk-wisey-spin {
+          width: 80px;
+          height: 80px;
+          object-fit: contain;
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .bonk-stage {
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          gap: 72px;
+        }
+        .bonk-pair {
+          display: flex;
+          align-items: flex-end;
+          gap: 0px;
+        }
+        .bonk-char {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+        }
+        .bonk-char img {
+          width: 90px;
+          height: 90px;
+          object-fit: contain;
+          filter: drop-shadow(0 8px 20px rgba(0,0,0,.5));
+        }
+        .bonk-attacker img {
+          width: 140px;
+          height: 140px;
+        }
+        .bonk-char-name {
+          font-size: 13px;
+          font-weight: 800;
+          text-shadow: 0 1px 4px rgba(0,0,0,.6);
+        }
+        .bonk-attacker img {
+          animation: attacker-swing .6s cubic-bezier(.2,.8,.3,1.1) .3s both;
+        }
+        .bonk-victim img {
+          animation: victim-shake .5s ease .3s both;
+        }
+        .bonk-impact {
+          font-size: 40px;
+          animation: stars-pop .5s ease .3s both;
+          line-height: 1;
+          margin-bottom: 44px;
+          flex-shrink: 0;
+        }
+
+        /* ── Result overlay ── */
+        .result-overlay {
+          position: fixed;
+          z-index: 60;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(20, 12, 4, .65);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+        }
+        .rm {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          z-index: 61;
+          width: min(88vw, 400px);
+          padding: 24px 20px 20px;
+          border-radius: 28px;
+          background: #fffaec;
+          box-shadow: 0 24px 60px rgba(0,0,0,.4);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          animation: bubble-arrive .35s cubic-bezier(.2,.9,.3,1.1) both;
+        }
+        .rm-title {
+          font-size: 20px;
+          font-weight: 900;
+          color: #3b2510;
+          letter-spacing: .2px;
+        }
+        .rm-sub {
+          font-size: 12px;
+          color: rgba(59,37,16,.55);
+          font-weight: 600;
+          text-align: center;
+          line-height: 1.4;
+          margin-bottom: 4px;
+        }
+        .rm-cols {
+          width: 100%;
+          display: flex;
+          align-items: stretch;
+          gap: 0;
+        }
+        .rm-col {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          padding: 12px 10px;
+          border-radius: 18px;
+        }
+        .rm-col-inc { background: rgba(22,163,74,.07); }
+        .rm-col-dec { background: rgba(220,38,38,.07); }
+        .rm-col-label {
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          color: #16a34a;
+        }
+        .rm-col-label-dec { color: #dc2626; }
+        .rm-divider {
+          width: 1px;
+          background: rgba(59,37,16,.1);
+          margin: 0 10px;
+          flex-shrink: 0;
+        }
+        .rm-card {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+          width: 100%;
+        }
+        .rm-avatar {
+          width: 60px;
+          height: 60px;
+          border-radius: 50%;
+          border: 3px solid;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+        .rm-avatar img {
+          width: 80%;
+          height: 80%;
+          object-fit: contain;
+        }
+        .rm-name {
+          font-size: 13px;
+          font-weight: 800;
+        }
+        .rm-delta {
+          font-size: 17px;
+          font-weight: 900;
+        }
+        .rm-delta-inc { color: #16a34a; }
+        .rm-delta-dec { color: #dc2626; }
+        .rm-btn {
+          width: 100%;
+          margin-top: 6px;
+          padding: 13px 0;
+          border: none;
+          border-radius: 30px;
+          background: #3b2510;
+          color: #fff9e9;
+          font: inherit;
+          font-size: 15px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: opacity .15s;
+          text-align: center;
+          text-decoration: none;
+          display: block;
+        }
+        .rm-btn:hover { opacity: .82; }
       `}</style>
     </main>
   );

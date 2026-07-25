@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const CHARACTERS = [
   { id: "bubble", name: "Bubble", file: "bubble.png", left: 18, top: 30, size: 220, color: "#F97316", bubble: { left: 27, top: 18 } },
@@ -16,6 +16,17 @@ const CHARACTERS = [
 ];
 
 const WISEY_COLOR = CHARACTERS.find((character) => character.id === "wisey").color;
+
+// How long an emotion's bubble stays on screen before the next one takes
+// over — scales with how much text it holds (longer lines linger longer),
+// decoupled from how fast the backend actually streams turns in, so nothing
+// flashes by before it can be read.
+const MIN_DISPLAY_MS = 5200;
+const MAX_DISPLAY_MS = 8500;
+function displayDurationFor(text) {
+  const raw = 3000 + (text?.length ?? 0) * 55;
+  return Math.max(MIN_DISPLAY_MS, Math.min(MAX_DISPLAY_MS, raw));
+}
 
 // Offsets the speech-bubble tail toward its character, in px along the 1600x900 stage.
 function bubbleTailOffset(character) {
@@ -42,6 +53,13 @@ export default function DebatePage() {
   const [verdictChat, setVerdictChat] = useState([]);
   const [verdictReply, setVerdictReply] = useState("");
 
+  // Paces the emotion bubbles: turns are pushed here as they finish, and
+  // revealed one at a time on a timer (see displayDurationFor) instead of
+  // snapping to whatever the network just delivered.
+  const queueRef = useRef([]);
+  const advancingRef = useRef(false);
+  const timersRef = useRef([]);
+  const finishedRef = useRef(null); // callback to run once queue drains after the stream ends
 
   useEffect(() => {
     const resize = () => setScale(Math.min(window.innerWidth / 1600, window.innerHeight / 900));
@@ -50,6 +68,33 @@ export default function DebatePage() {
     return () => window.removeEventListener("resize", resize);
   }, []);
 
+  useEffect(() => () => timersRef.current.forEach(clearTimeout), []);
+
+  function advanceQueue() {
+    const next = queueRef.current.shift();
+    if (!next) {
+      advancingRef.current = false;
+      setActiveSpeaker(null);
+      if (finishedRef.current) {
+        const done = finishedRef.current;
+        finishedRef.current = null;
+        done();
+      }
+      return;
+    }
+    advancingRef.current = true;
+    setResponses((current) => ({ ...current, [next.id]: next.text }));
+    setActiveSpeaker(next.id);
+    const t = setTimeout(advanceQueue, displayDurationFor(next.text));
+    timersRef.current.push(t);
+  }
+
+  function enqueueBubble(id, text) {
+    if (!id || !text) return;
+    queueRef.current.push({ id, text });
+    if (!advancingRef.current) advanceQueue();
+  }
+
   async function startDebate(event) {
     event.preventDefault();
     const nextTopic = topic.trim();
@@ -57,6 +102,11 @@ export default function DebatePage() {
 
     setLoading(true);
     setError("");
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+    queueRef.current = [];
+    advancingRef.current = false;
+    finishedRef.current = null;
     setActiveSpeaker(null);
     setResponses({});
     setRoundComplete(false);
@@ -70,7 +120,7 @@ export default function DebatePage() {
       const response = await fetch("/api/debate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: nextTopic, history }),
+        body: JSON.stringify({ message: nextTopic, history, compact: true }),
       });
       if (!response.ok || !response.body) {
         const data = await response.json().catch(() => ({}));
@@ -106,21 +156,14 @@ export default function DebatePage() {
             isDirect = Boolean(streamEvent.direct);
             summary = streamEvent.summary || nextTopic;
             setTopicSummary(summary);
-          } else if (streamEvent.type === "turn_start") {
-            const id = streamEvent.agent?.toLowerCase();
-            if (id && (id !== "wisey" || isDirect)) {
-              setResponses((current) => ({ ...current, [id]: "" }));
-            }
-            setActiveSpeaker(id === "wisey" && !isDirect ? null : id);
-          } else if (streamEvent.type === "turn") {
+          } else if (streamEvent.type === "turn_end") {
+            // Renders the finished line for a turn — deltas are ignored here
+            // since the bubble only appears once paced in by the queue below.
             const id = streamEvent.agent?.toLowerCase();
             messages.push({ agent: streamEvent.agent, text: streamEvent.text });
             if (id !== "wisey" || isDirect) {
-              setResponses((current) => ({ ...current, [id]: streamEvent.text }));
-              setActiveSpeaker(id);
-              if (id === "wisey") setWiseyVerdict("");
+              enqueueBubble(id, streamEvent.text);
             } else {
-              setActiveSpeaker(null);
               setWiseyVerdict(streamEvent.text);
             }
           } else if (streamEvent.type === "error") {
@@ -130,22 +173,32 @@ export default function DebatePage() {
       }
 
       if (streamError) throw new Error(streamError);
-      setDebateHistory((currentHistory) => [
-        ...currentHistory,
-        {
-          id: `${Date.now()}-${currentHistory.length}`,
-          prompt: nextTopic,
-          summary,
-          messages,
-        },
-      ]);
+
+      const finalize = () => {
+        setDebateHistory((currentHistory) => [
+          ...currentHistory,
+          {
+            id: `${Date.now()}-${currentHistory.length}`,
+            prompt: nextTopic,
+            summary,
+            messages,
+          },
+        ]);
+        setRoundComplete(true);
+      };
+      // Let any bubbles still playing out finish their paced reveal before
+      // flipping to "round complete" (which is what surfaces the verdict
+      // button) — the network usually finishes well before the queue does.
+      if (advancingRef.current || queueRef.current.length > 0) {
+        finishedRef.current = finalize;
+      } else {
+        finalize();
+      }
       setTopic("");
-      setRoundComplete(true);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
       setLoading(false);
-      setActiveSpeaker(null);
     }
   }
 

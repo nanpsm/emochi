@@ -122,15 +122,44 @@ function ChatInner() {
     }));
   }
 
-  async function askAgent(agentName, message, previousResponseId) {
-    const r = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agent: agentName, message, previousResponseId }),
+  // Mutates the LAST message in a thread — used while a streamed reply is
+  // still arriving. Safe because each thread only ever has one agent
+  // streaming into it at a time (1:1 chat, or the debate's one-speaker-at-a-
+  // time turn order).
+  function updateLastMessage(key, updater) {
+    setThreads((t) => {
+      const msgs = t[key]?.messages ?? [];
+      if (msgs.length === 0) return t;
+      const updated = updater(msgs[msgs.length - 1]);
+      return {
+        ...t,
+        [key]: { ...(t[key] ?? { lastResponseId: null }), messages: [...msgs.slice(0, -1), updated] },
+      };
     });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
-    return data;
+  }
+
+  // Reads a newline-delimited JSON stream response, calling onEvent for each
+  // parsed line as it arrives.
+  async function consumeNdjson(response, onEvent) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        try {
+          onEvent(JSON.parse(line));
+        } catch {
+          // ignore malformed line
+        }
+      }
+    }
   }
 
   async function sendSingle(text) {
@@ -138,20 +167,41 @@ function ChatInner() {
     const prev = threads[agent]?.lastResponseId ?? null;
     appendMessage(agent, { role: "user", text });
     setPending(new Set([agent]));
+    // Bubble only appears once the first token actually arrives, so the
+    // typing dots and an empty bubble never show at the same time.
+    let streaming = false;
     try {
-      const data = await askAgent(agent, text, prev);
-      setThreads((t) => ({
-        ...t,
-        [agent]: {
-          messages: [
-            ...(t[agent]?.messages ?? []),
-            { role: "agent", agent, text: data.reply },
-          ],
-          lastResponseId: data.responseId,
-        },
-      }));
+      const r = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent, message: text, previousResponseId: prev }),
+      });
+      if (!r.ok || !r.body) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error ?? `HTTP ${r.status}`);
+      }
+      await consumeNdjson(r, (ev) => {
+        if (ev.type === "delta") {
+          if (!streaming) {
+            streaming = true;
+            setPending(new Set());
+            appendMessage(agent, { role: "agent", agent, text: ev.text });
+          } else {
+            updateLastMessage(agent, (m) => ({ ...m, text: (m.text ?? "") + ev.text }));
+          }
+        } else if (ev.type === "done") {
+          setThreads((t) => ({
+            ...t,
+            [agent]: { ...(t[agent] ?? {}), lastResponseId: ev.responseId },
+          }));
+        } else if (ev.type === "error") {
+          if (streaming) updateLastMessage(agent, (m) => ({ ...m, role: "error", text: ev.message }));
+          else appendMessage(agent, { role: "error", agent, text: ev.message });
+        }
+      });
     } catch (e) {
-      appendMessage(agent, { role: "error", agent, text: e.message });
+      if (streaming) updateLastMessage(agent, (m) => ({ ...m, role: "error", text: e.message }));
+      else appendMessage(agent, { role: "error", agent, text: e.message });
     } finally {
       setPending(new Set());
     }
@@ -180,35 +230,28 @@ function ChatInner() {
         throw new Error(data.error ?? `HTTP ${r.status}`);
       }
 
-      const reader = r.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        let nl;
-        while ((nl = buf.indexOf("\n")) >= 0) {
-          const line = buf.slice(0, nl).trim();
-          buf = buf.slice(nl + 1);
-          if (!line) continue;
-          let ev;
-          try {
-            ev = JSON.parse(line);
-          } catch {
-            continue;
-          }
-          if (ev.type === "turn_start") {
-            setPending(new Set([ev.agent]));
-          } else if (ev.type === "turn") {
+      // Bubble only appears once the first token of a turn actually arrives.
+      let streaming = false;
+      await consumeNdjson(r, (ev) => {
+        if (ev.type === "turn_start") {
+          setPending(new Set([ev.agent]));
+          streaming = false;
+        } else if (ev.type === "turn_delta") {
+          if (!streaming) {
+            streaming = true;
             setPending(new Set());
-            appendMessage(GROUP, { role: "agent", agent: ev.agent, text: ev.text });
-          } else if (ev.type === "error") {
-            setPending(new Set());
-            appendMessage(GROUP, { role: "error", text: ev.message });
+            appendMessage(GROUP, { role: "agent", agent: ev.agent, text: ev.delta });
+          } else {
+            updateLastMessage(GROUP, (m) => ({ ...m, text: (m.text ?? "") + ev.delta }));
           }
+        } else if (ev.type === "turn_end") {
+          if (streaming) updateLastMessage(GROUP, (m) => ({ ...m, text: ev.text }));
+          else appendMessage(GROUP, { role: "agent", agent: ev.agent, text: ev.text });
+        } else if (ev.type === "error") {
+          setPending(new Set());
+          appendMessage(GROUP, { role: "error", text: ev.message });
         }
-      }
+      });
     } catch (e) {
       appendMessage(GROUP, { role: "error", text: e.message });
     } finally {

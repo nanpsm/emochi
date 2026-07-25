@@ -51,10 +51,15 @@ export default function InterestsPage() {
     });
   }
 
-  function handleContinue() {
+  async function handleContinue() {
     try {
       localStorage.setItem("emochi_interests", JSON.stringify(selected));
     } catch {}
+    await fetch("/api/interests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ interests: selected }),
+    }).catch(() => {});
     router.push("/home");
   }
 

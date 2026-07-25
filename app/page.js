@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { signIn } from "next-auth/react";
+import { getSession, signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 const INK = "#1a1a2e";
 
@@ -12,14 +13,18 @@ const GIFS = [
   "fear-sad.gif",
   "bubble-talking.gif",
   "buzzy-busy.gif",
+  "zen-fly.gif",
 ];
 
 const HOLD_MS = 2600;
 const FADE_MS = 400;
 
 export default function LoginPage() {
+  const router = useRouter();
   const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(true);
+  const [existingSession, setExistingSession] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
     let hideTimer, showTimer;
@@ -41,6 +46,28 @@ export default function LoginPage() {
       clearTimeout(showTimer);
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    getSession()
+      .then((session) => {
+        if (active) setExistingSession(Boolean(session));
+      })
+      .finally(() => {
+        if (active) setCheckingSession(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function handleContinue() {
+    if (existingSession) {
+      router.push("/home");
+      return;
+    }
+    signIn("microsoft-entra-id", { callbackUrl: "/auth/redirect" });
+  }
 
   return (
     <>
@@ -106,7 +133,8 @@ export default function LoginPage() {
           </h1>
 
           <button
-            onClick={() => signIn("microsoft-entra-id", { callbackUrl: "/auth/redirect" })}
+            onClick={handleContinue}
+            disabled={checkingSession}
             className="login-ms-btn"
             style={{
               width: "100%",
@@ -115,11 +143,17 @@ export default function LoginPage() {
               border: "1.5px solid #e0e0e0", borderRadius: 14,
               padding: "14px 20px",
               fontFamily: "var(--font-nunito),'Nunito',sans-serif",
-              fontWeight: 700, fontSize: 15, cursor: "pointer",
+              fontWeight: 700, fontSize: 15,
+              cursor: checkingSession ? "wait" : "pointer",
+              opacity: checkingSession ? .65 : 1,
             }}
           >
-            <MicrosoftLogo />
-            Sign in with Microsoft
+            {!existingSession && <MicrosoftLogo />}
+            {checkingSession
+              ? "Checking your Emochi…"
+              : existingSession
+                ? "Continue talking with Emochi"
+                : "Sign in with Microsoft"}
           </button>
         </div>
       </div>

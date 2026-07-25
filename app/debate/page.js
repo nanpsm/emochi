@@ -1,11 +1,12 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 const CHARACTERS = [
   { id: "bubble", name: "Bubble", file: "bubble.png", left: 18, top: 30, size: 220, color: "#F97316", bubble: { left: 27, top: 18 } },
-  { id: "wisey", name: "Wisey", file: "wisey-judge.png", left: 49.5, top: 32.5, size: 185, color: "#C9A857" },
+  { id: "wisey", name: "Wisey", file: "wisey-judge.png", left: 49.5, top: 32.5, size: 185, color: "#C9A857", bubble: { left: 49.5, top: 15 } },
   { id: "buzzy", name: "Buzzy", file: "buzzy.png", left: 78, top: 30, size: 220, color: "#FF6B4A", bubble: { left: 68, top: 18 } },
   { id: "cheer", name: "Cheer", file: "cheer.png", left: 72, top: 54, size: 210, color: "#FFC53D", bubble: { left: 79, top: 43 } },
   { id: "fear", name: "Fear", file: "fear.png", left: 28, top: 54, size: 200, color: "#A78BFA", bubble: { left: 18, top: 43 } },
@@ -14,8 +15,27 @@ const CHARACTERS = [
   { id: "dozy", name: "Dozy", file: "dozy.png", left: 67, top: 76, size: 220, color: "#6C7A96", bubble: { left: 58, top: 76 } },
 ];
 
-const SPEAKING_ORDER = ["bubble", "buzzy", "fear", "cheer", "tear", "zen", "dozy"];
-const SPEAKING_TIME = 4800;
+const WISEY_COLOR = CHARACTERS.find((character) => character.id === "wisey").color;
+
+// How long an emotion's bubble stays on screen before the next one takes
+// over — scales with how much text it holds (longer lines linger longer),
+// decoupled from how fast the backend actually streams turns in, so nothing
+// flashes by before it can be read.
+const MIN_DISPLAY_MS = 5200;
+const MAX_DISPLAY_MS = 8500;
+function displayDurationFor(text) {
+  const raw = 3000 + (text?.length ?? 0) * 55;
+  return Math.max(MIN_DISPLAY_MS, Math.min(MAX_DISPLAY_MS, raw));
+}
+
+// Offsets the speech-bubble tail toward its character, in px along the 1600x900 stage.
+function bubbleTailOffset(character) {
+  if (!character.bubble) return { x: 0, y: 40 };
+  const dx = character.left - character.bubble.left;
+  const dy = character.top - character.bubble.top;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: (dx / len) * 130, y: Math.max((dy / len) * 40, -14) };
+}
 
 export default function DebatePage() {
   const [scale, setScale] = useState(1);
@@ -23,9 +43,23 @@ export default function DebatePage() {
   const [topicSummary, setTopicSummary] = useState("");
   const [responses, setResponses] = useState(null);
   const [activeSpeaker, setActiveSpeaker] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [debateHistory, setDebateHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const timers = useRef([]);
+  const [roundComplete, setRoundComplete] = useState(false);
+  const [wiseyVerdict, setWiseyVerdict] = useState("");
+  const [verdictOpen, setVerdictOpen] = useState(false);
+  const [verdictChat, setVerdictChat] = useState([]);
+  const [verdictReply, setVerdictReply] = useState("");
+
+  // Paces the emotion bubbles: turns are pushed here as they finish, and
+  // revealed one at a time on a timer (see displayDurationFor) instead of
+  // snapping to whatever the network just delivered.
+  const queueRef = useRef([]);
+  const advancingRef = useRef(false);
+  const timersRef = useRef([]);
+  const finishedRef = useRef(null); // callback to run once queue drains after the stream ends
 
   useEffect(() => {
     const resize = () => setScale(Math.min(window.innerWidth / 1600, window.innerHeight / 900));
@@ -34,22 +68,31 @@ export default function DebatePage() {
     return () => window.removeEventListener("resize", resize);
   }, []);
 
-  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  useEffect(() => () => timersRef.current.forEach(clearTimeout), []);
 
-  function playDebate(nextResponses) {
-    timers.current.forEach(clearTimeout);
-    timers.current = [];
-    setResponses(nextResponses);
-    setActiveSpeaker(SPEAKING_ORDER[0]);
-
-    SPEAKING_ORDER.forEach((id, index) => {
-      if (index > 0) {
-        timers.current.push(setTimeout(() => setActiveSpeaker(id), index * SPEAKING_TIME));
+  function advanceQueue() {
+    const next = queueRef.current.shift();
+    if (!next) {
+      advancingRef.current = false;
+      setActiveSpeaker(null);
+      if (finishedRef.current) {
+        const done = finishedRef.current;
+        finishedRef.current = null;
+        done();
       }
-    });
-    timers.current.push(
-      setTimeout(() => setActiveSpeaker(null), SPEAKING_ORDER.length * SPEAKING_TIME),
-    );
+      return;
+    }
+    advancingRef.current = true;
+    setResponses((current) => ({ ...current, [next.id]: next.text }));
+    setActiveSpeaker(next.id);
+    const t = setTimeout(advanceQueue, displayDurationFor(next.text));
+    timersRef.current.push(t);
+  }
+
+  function enqueueBubble(id, text) {
+    if (!id || !text) return;
+    queueRef.current.push({ id, text });
+    if (!advancingRef.current) advanceQueue();
   }
 
   async function startDebate(event) {
@@ -59,26 +102,126 @@ export default function DebatePage() {
 
     setLoading(true);
     setError("");
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+    queueRef.current = [];
+    advancingRef.current = false;
+    finishedRef.current = null;
     setActiveSpeaker(null);
-    timers.current.forEach(clearTimeout);
+    setResponses({});
+    setRoundComplete(false);
+    setWiseyVerdict("");
 
     try {
+      const history = debateHistory.flatMap((entry) => [
+        { speaker: "User", text: entry.prompt },
+        ...entry.messages.map((item) => ({ speaker: item.agent, text: item.text })),
+      ]);
       const response = await fetch("/api/debate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: nextTopic }),
+        body: JSON.stringify({ message: nextTopic, history, compact: true }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "The debate could not begin.");
+      if (!response.ok || !response.body) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "The debate could not begin.");
+      }
 
-      setTopicSummary(data.summary || nextTopic);
-      playDebate(data.responses);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const messages = [];
+      let buffer = "";
+      let summary = nextTopic;
+      let streamError = "";
+      let isDirect = false;
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let newline;
+        while ((newline = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, newline).trim();
+          buffer = buffer.slice(newline + 1);
+          if (!line) continue;
+
+          let streamEvent;
+          try {
+            streamEvent = JSON.parse(line);
+          } catch {
+            continue;
+          }
+
+          if (streamEvent.type === "cast") {
+            isDirect = Boolean(streamEvent.direct);
+            summary = streamEvent.summary || nextTopic;
+            setTopicSummary(summary);
+          } else if (streamEvent.type === "turn_end") {
+            // Renders the finished line for a turn — deltas are ignored here
+            // since the bubble only appears once paced in by the queue below.
+            const id = streamEvent.agent?.toLowerCase();
+            messages.push({ agent: streamEvent.agent, text: streamEvent.text });
+            if (id !== "wisey" || isDirect) {
+              enqueueBubble(id, streamEvent.text);
+            } else {
+              setWiseyVerdict(streamEvent.text);
+            }
+          } else if (streamEvent.type === "error") {
+            streamError = streamEvent.message || "The debate failed.";
+          }
+        }
+      }
+
+      if (streamError) throw new Error(streamError);
+
+      const finalize = () => {
+        setDebateHistory((currentHistory) => [
+          ...currentHistory,
+          {
+            id: `${Date.now()}-${currentHistory.length}`,
+            prompt: nextTopic,
+            summary,
+            messages,
+          },
+        ]);
+        setRoundComplete(true);
+      };
+      // Let any bubbles still playing out finish their paced reveal before
+      // flipping to "round complete" (which is what surfaces the verdict
+      // button) — the network usually finishes well before the queue does.
+      if (advancingRef.current || queueRef.current.length > 0) {
+        finishedRef.current = finalize;
+      } else {
+        finalize();
+      }
       setTopic("");
     } catch (requestError) {
       setError(requestError.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  function openVerdict() {
+    setVerdictChat([{ from: "wisey", text: wiseyVerdict }]);
+    setVerdictReply("");
+    setVerdictOpen(true);
+  }
+
+  function closeVerdict() {
+    setVerdictOpen(false);
+  }
+
+  function sendVerdictReply(event) {
+    event.preventDefault();
+    const text = verdictReply.trim();
+    if (!text) return;
+    setVerdictChat((chat) => [...chat, { from: "user", text }]);
+    setVerdictReply("");
+    setTimeout(() => {
+      setVerdictChat((chat) => [...chat, { from: "wisey", text: "At your service." }]);
+      setTimeout(() => setVerdictOpen(false), 1600);
+    }, 500);
   }
 
   const speaker = CHARACTERS.find((character) => character.id === activeSpeaker);
@@ -93,12 +236,28 @@ export default function DebatePage() {
         sizes="100vw"
         style={{ objectFit: "fill" }}
       />
+
+      <div className="home-btn">
+        <Link href="/home" aria-label="Home" style={{ display: "flex", width: "100%", height: "100%" }}>
+          <img src="/home.png" alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+        </Link>
+      </div>
+
       <div className="debate-stage" style={{ transform: `scale(${scale})` }}>
-        {topicSummary && (
+        {topicSummary && !roundComplete && (
           <section className="topic-panel" aria-live="polite">
             <span>Today&apos;s topic</span>
             <p>{topicSummary}</p>
           </section>
+        )}
+
+        {roundComplete && wiseyVerdict && (
+          <button type="button" className="verdict-trigger" onClick={openVerdict}>
+            <div className="hammer-badge">
+              <img src="/hammer.png" alt="" className="hammer-icon" />
+            </div>
+            <span className="verdict-label">Verdict</span>
+          </button>
         )}
 
         {CHARACTERS.map((character) => (
@@ -131,14 +290,92 @@ export default function DebatePage() {
               left: `${speaker.bubble.left}%`,
               top: `${speaker.bubble.top}%`,
               "--character-color": speaker.color,
-              "--bubble-fill": `${speaker.color}B8`,
             }}
             aria-live="polite"
           >
-            <strong>{speaker.name}</strong>
+            <strong style={{ color: speaker.color }}>{speaker.name}</strong>
             <p>{responses[speaker.id]}</p>
+            <span
+              className="bubble-tail"
+              style={{
+                left: `calc(50% + ${bubbleTailOffset(speaker).x}px)`,
+                top: `calc(50% + ${bubbleTailOffset(speaker).y}px)`,
+              }}
+            />
           </aside>
         )}
+
+        <button
+          type="button"
+          className={`history-toggle ${historyOpen ? "is-open" : ""}`}
+          onClick={() => setHistoryOpen((open) => !open)}
+          aria-label={historyOpen ? "Close chat history" : "Open chat history"}
+          aria-expanded={historyOpen}
+          aria-controls="debate-history"
+          title={historyOpen ? "Close chat history" : "Chat history"}
+        >
+          <span className="material-symbols-outlined" aria-hidden="true">
+            {historyOpen ? "more_down" : "history"}
+          </span>
+        </button>
+
+        <aside
+          id="debate-history"
+          className={`history-panel ${historyOpen ? "is-open" : ""}`}
+          aria-hidden={!historyOpen}
+        >
+          <header>
+            <div>
+              <span className="material-symbols-outlined" aria-hidden="true">forum</span>
+              <h2>Chat history</h2>
+            </div>
+            {debateHistory.length > 0 && (
+              <span>{debateHistory.length} {debateHistory.length === 1 ? "topic" : "topics"}</span>
+            )}
+          </header>
+
+          <div className="history-list">
+            {debateHistory.length === 0 ? (
+              <div className="history-empty">
+                <span className="material-symbols-outlined" aria-hidden="true">chat_bubble</span>
+                <p>Your debates will appear here.</p>
+              </div>
+            ) : (
+              [...debateHistory].reverse().map((entry) => (
+                <section className="history-entry" key={entry.id}>
+                  <div className="history-prompt">
+                    <span>You</span>
+                    <p>{entry.prompt}</p>
+                  </div>
+                  <div className="history-summary">{entry.summary}</div>
+                  {entry.messages.map((message, index) => {
+                    const character = CHARACTERS.find(
+                      (item) => item.id === message.agent?.toLowerCase(),
+                    );
+                    if (!message.text) return null;
+                    return (
+                      <div className="history-reply" key={`${message.agent}-${index}`}>
+                        {character && (
+                          <img
+                            src={`/idle/${character.file}`}
+                            alt=""
+                            className="history-avatar"
+                          />
+                        )}
+                        <div className="history-reply-body">
+                          <strong style={{ color: character?.color || "#806b59" }}>
+                            {character?.name || message.agent}
+                          </strong>
+                          <p>{message.text}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </section>
+              ))
+            )}
+          </div>
+        </aside>
 
         <form className="topic-form" onSubmit={startDebate}>
           <div>
@@ -166,6 +403,42 @@ export default function DebatePage() {
         </form>
       </div>
 
+      {verdictOpen && (
+        <div className="verdict-overlay" onClick={closeVerdict}>
+          <div className="verdict-modal" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="verdict-close" onClick={closeVerdict} aria-label="Close">
+              <span className="material-symbols-outlined" aria-hidden="true">close</span>
+            </button>
+
+            <div className="verdict-gif-panel">
+              <img src="/gif/wisey-verdict.gif" alt="Wisey" />
+            </div>
+
+            <div className="verdict-chat-panel">
+              <div className="verdict-chat-messages">
+                {verdictChat.map((message, index) => (
+                  <div className={`verdict-msg ${message.from}`} key={index}>
+                    {message.from === "wisey" && <strong>Wisey</strong>}
+                    <p>{message.text}</p>
+                  </div>
+                ))}
+              </div>
+              <form className="verdict-reply-form" onSubmit={sendVerdictReply}>
+                <input
+                  value={verdictReply}
+                  onChange={(event) => setVerdictReply(event.target.value)}
+                  placeholder="Accept, reject, or say anything…"
+                  aria-label="Reply to Wisey"
+                />
+                <button type="submit" aria-label="Send" disabled={!verdictReply.trim()}>
+                  <span className="material-symbols-outlined" aria-hidden="true">arrow_upward</span>
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
         .debate-viewport {
           position: fixed;
@@ -185,6 +458,182 @@ export default function DebatePage() {
           flex: none;
           transform-origin: center;
           overflow: hidden;
+        }
+        .home-btn {
+          position: fixed;
+          z-index: 40;
+          top: 20px;
+          left: 20px;
+          width: 56px;
+          height: 56px;
+          padding: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(255, 255, 255, .55);
+          border-radius: 9999px;
+          background: rgba(255, 250, 233, .58);
+          box-shadow: 0 8px 25px rgba(74, 45, 13, .18);
+          backdrop-filter: blur(10px);
+          transition: transform .18s ease, background .18s ease;
+        }
+        .home-btn:hover { transform: scale(1.1); background: rgba(255, 250, 233, .78); }
+        .verdict-trigger {
+          position: absolute;
+          z-index: 4;
+          left: 50%;
+          top: 48%;
+          transform: translate(-50%, -50%);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          background: none;
+          border: none;
+          cursor: pointer;
+        }
+        .hammer-badge {
+          width: 92px;
+          height: 92px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 9999px;
+          background: transparent;
+          box-shadow: 0 10px 26px rgba(74, 45, 13, .3);
+          animation: hammer-float 2.2s ease-in-out infinite;
+        }
+        .hammer-icon {
+          width: 66%;
+          height: 66%;
+          object-fit: contain;
+        }
+        .verdict-label {
+          font-size: 18px;
+          font-weight: 800;
+          letter-spacing: 1px;
+          color: #4d351e;
+          text-shadow: 0 2px 6px rgba(255, 255, 255, .5);
+        }
+        .verdict-overlay {
+          position: fixed;
+          z-index: 50;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(30, 20, 8, .45);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+        }
+        .verdict-modal {
+          position: relative;
+          width: min(90vw, 780px);
+          height: min(80vh, 460px);
+          display: flex;
+          border-radius: 32px;
+          overflow: hidden;
+          background: rgba(255, 250, 240, .92);
+          box-shadow: 0 30px 70px rgba(0, 0, 0, .35);
+        }
+        .verdict-close {
+          position: absolute;
+          z-index: 5;
+          top: 14px;
+          right: 14px;
+          width: 34px;
+          height: 34px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: none;
+          border-radius: 9999px;
+          background: rgba(0, 0, 0, .12);
+          color: #4d351e;
+          cursor: pointer;
+        }
+        .verdict-close:hover { background: rgba(0, 0, 0, .22); }
+        .verdict-gif-panel {
+          flex: 0 0 42%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(160deg, #f6e7c4, #e8cf9a);
+        }
+        .verdict-gif-panel img { width: 82%; height: 82%; object-fit: contain; }
+        .verdict-chat-panel {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          padding: 24px;
+        }
+        .verdict-chat-messages {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          padding-right: 4px;
+        }
+        .verdict-msg {
+          max-width: 85%;
+          padding: 10px 15px;
+          border-radius: 18px;
+          font-size: 14px;
+          line-height: 1.4;
+        }
+        .verdict-msg strong { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 800; color: ${WISEY_COLOR}; }
+        .verdict-msg p { margin: 0; }
+        .verdict-msg.wisey {
+          align-self: flex-start;
+          border-radius: 5px 18px 18px 18px;
+          background: rgba(201, 168, 87, .22);
+          color: #4d351e;
+        }
+        .verdict-msg.user {
+          align-self: flex-end;
+          border-radius: 18px 18px 5px 18px;
+          background: #4d351e;
+          color: #fff9e9;
+        }
+        .verdict-reply-form {
+          flex: 0 0 auto;
+          margin-top: 14px;
+          display: flex;
+          gap: 8px;
+        }
+        .verdict-reply-form input {
+          flex: 1;
+          min-width: 0;
+          height: 42px;
+          padding: 0 15px;
+          outline: none;
+          border: 1px solid rgba(77, 53, 30, .18);
+          border-radius: 16px;
+          background: #fff;
+          font: inherit;
+          font-size: 14px;
+        }
+        .verdict-reply-form button {
+          width: 42px;
+          height: 42px;
+          flex: 0 0 42px;
+          padding: 0;
+          border: 0;
+          border-radius: 9999px;
+          background: #4d351e;
+          color: #fff9e9;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+        .verdict-reply-form button:disabled { opacity: .5; cursor: default; }
+        @keyframes hammer-float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px); }
         }
         .character {
           position: absolute;
@@ -233,23 +682,166 @@ export default function DebatePage() {
           width: 310px;
           padding: 18px 21px;
           transform: translate(-50%, -50%);
-          color: #fff;
-          border: 1px solid rgba(255, 255, 255, .5);
+          color: #3d2d20;
+          border: 2px solid var(--character-color);
           border-radius: 24px;
-          background: var(--bubble-fill);
+          background: rgba(255, 250, 240, .93);
           box-shadow: 0 13px 32px rgba(41, 27, 14, .22);
           backdrop-filter: blur(4px);
           -webkit-backdrop-filter: blur(4px);
           animation: bubble-arrive .36s cubic-bezier(.2, .9, .3, 1.2) both;
-          text-shadow: 0 1px 2px rgba(0, 0, 0, .18);
         }
         .speech-bubble strong {
           display: block;
           margin-bottom: 3px;
           font-size: 15px;
+          font-weight: 800;
           letter-spacing: .3px;
         }
-        .speech-bubble p { font-size: 16px; font-weight: 600; line-height: 1.35; }
+        .speech-bubble p { font-size: 19px; font-weight: 600; line-height: 1.35; }
+        .bubble-tail {
+          position: absolute;
+          z-index: -1;
+          width: 20px;
+          height: 20px;
+          transform: translate(-50%, -50%) rotate(45deg);
+          background: rgba(255, 250, 240, .93);
+          border: 2px solid var(--character-color);
+        }
+        .history-toggle {
+          position: absolute;
+          z-index: 31;
+          left: calc(50% + 340px);
+          bottom: 24px;
+          width: 63px;
+          height: 63px;
+          padding: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid rgba(255, 255, 255, .55);
+          border-radius: 9999px;
+          background: rgba(255, 250, 233, .58);
+          box-shadow: 0 8px 25px rgba(74, 45, 13, .18);
+          backdrop-filter: blur(10px);
+          color: #5b3a21;
+          cursor: pointer;
+          transition: left .22s ease, bottom .22s ease, transform .18s ease, background .18s ease;
+        }
+        .history-toggle:hover { transform: scale(1.1); background: rgba(255, 250, 233, .78); }
+        .history-toggle.is-open {
+          left: calc(100% - 460px);
+          bottom: 24px;
+        }
+        .history-toggle .material-symbols-outlined { font-size: 28px; }
+        .history-panel {
+          position: absolute;
+          z-index: 30;
+          top: 18px;
+          right: 18px;
+          width: 450px;
+          bottom: 16px;
+          padding: 20px;
+          display: flex;
+          flex-direction: column;
+          border: 1px solid rgba(255, 255, 255, .55);
+          border-radius: 28px;
+          background: rgba(255, 250, 233, .80);
+          box-shadow: 0 12px 34px rgba(74, 45, 13, .2);
+          backdrop-filter: blur(30px);
+          -webkit-backdrop-filter: blur(30px);
+          opacity: 0;
+          pointer-events: none;
+          transform: translateX(35px) scale(.96);
+          transform-origin: top right;
+          transition: opacity .22s ease, transform .22s ease;
+        }
+        .history-panel.is-open {
+          opacity: 1;
+          pointer-events: auto;
+          transform: none;
+        }
+        .history-panel header {
+          min-height: 48px;
+          padding-right: 58px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          border-bottom: 1px solid rgba(91, 58, 33, .12);
+          color: #5b3a21;
+        }
+        .history-panel header > div { display: flex; align-items: center; gap: 8px; }
+        .history-panel h2 { margin: 0; font-size: 18px; line-height: 1; }
+        .history-panel header > span { font-size: 11px; font-weight: 700; opacity: .65; }
+        .history-list {
+          flex: 1;
+          min-height: 0;
+          margin-top: 13px;
+          padding: 0 5px 76px 0;
+          overflow-y: auto;
+          scrollbar-color: rgba(91, 58, 33, .3) transparent;
+          scrollbar-width: thin;
+        }
+        .history-empty {
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          color: rgba(91, 58, 33, .6);
+          text-align: center;
+        }
+        .history-empty .material-symbols-outlined { font-size: 34px; }
+        .history-empty p { margin: 6px 0; font-size: 14px; font-weight: 650; }
+        .history-entry {
+          padding: 0 0 16px;
+          margin-bottom: 16px;
+          border-bottom: 1px solid rgba(91, 58, 33, .12);
+        }
+        .history-entry:last-child { margin-bottom: 0; border-bottom: 0; }
+        .history-prompt {
+          margin-left: 35px;
+          padding: 10px 13px;
+          border-radius: 18px 18px 5px 18px;
+          background: rgba(91, 58, 33, .82);
+          color: #fff9e9;
+        }
+        .history-prompt span {
+          display: block;
+          margin-bottom: 2px;
+          font-size: 10px;
+          font-weight: 800;
+          text-transform: uppercase;
+          opacity: .7;
+        }
+        .history-prompt p, .history-reply p { margin: 0; font-size: 23px; line-height: 1.38; }
+        .history-summary {
+          margin: 9px 3px 7px;
+          color: rgba(91, 58, 33, .62);
+          font-size: 11px;
+          font-weight: 800;
+          text-align: center;
+        }
+        .history-reply {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          margin: 6px 24px 0 0;
+          padding: 9px 12px;
+          border: 1px solid rgba(255, 255, 255, .4);
+          border-radius: 5px 16px 16px 16px;
+          background: rgba(255, 255, 255, .36);
+          color: #4a3827;
+        }
+        .history-avatar {
+          flex: 0 0 auto;
+          width: 32px;
+          height: 32px;
+          object-fit: contain;
+          margin-top: 1px;
+        }
+        .history-reply-body { flex: 1; min-width: 0; }
+        .history-reply strong { display: block; margin-bottom: 1px; font-size: 11px; font-weight: 800; }
         .topic-form {
           position: absolute;
           z-index: 20;
@@ -297,7 +889,7 @@ export default function DebatePage() {
           cursor: pointer;
           transition: transform .18s ease, opacity .18s ease;
         }
-        .topic-form button:hover:not(:disabled) { transform: scale(1.5); }
+        .topic-form button:hover:not(:disabled) { transform: scale(1.2); }
         .topic-form button .material-symbols-outlined { font-size: 23px; font-weight: 700; }
         .topic-form button:disabled { cursor: default; opacity: .58; }
         .form-error { margin: 7px 3px 0; color: #9e2f25; font-size: 12px; font-weight: 700; }
@@ -310,7 +902,7 @@ export default function DebatePage() {
           to { transform: translate(-50%, -53%) rotate(1.5deg) scale(1.035); }
         }
         @media (prefers-reduced-motion: reduce) {
-          .character.is-speaking, .speech-bubble { animation: none; }
+          .character.is-speaking, .speech-bubble, .hammer-badge { animation: none; }
         }
       `}</style>
     </main>

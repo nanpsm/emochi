@@ -50,8 +50,28 @@ async function getDirectorModel(project) {
   return cachedDirectorModel;
 }
 
+// The agent roster (names + enabled state) rarely changes, so cache it across
+// requests instead of re-listing it from Azure on every debate.
+let cachedAgentNames = null;
+async function getAgentNames(project) {
+  if (cachedAgentNames) return cachedAgentNames;
+  const names = [];
+  for await (const a of project.agents.list()) {
+    if (a.state === "enabled") names.push(a.name);
+  }
+  cachedAgentNames = names;
+  return names;
+}
+
 async function askDirector(openai, model, prompt) {
-  const r = await openai.responses.create({ model, input: prompt });
+  // The director only ever picks a name or writes one short JSON line — no
+  // real reasoning needed, so keep GPT-5-mini's reasoning effort minimal to
+  // cut its latency (it defaults to spending real "thinking" time otherwise).
+  const r = await openai.responses.create({
+    model,
+    input: prompt,
+    reasoning: { effort: "minimal" },
+  });
   const m = clean(r.output_text).match(/\{[\s\S]*?\}/);
   if (!m) return null;
   try {
@@ -68,7 +88,7 @@ export async function POST(req) {
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { message, history = [] } = payload;
+  const { message, history = [], compact = false } = payload;
   if (!message || typeof message !== "string") {
     return Response.json({ error: "Missing 'message'" }, { status: 400 });
   }
@@ -77,10 +97,7 @@ export async function POST(req) {
   try {
     project = getFoundryProject();
     openai = project.getOpenAIClient();
-    agentNames = [];
-    for await (const a of project.agents.list()) {
-      if (a.state === "enabled") agentNames.push(a.name);
-    }
+    agentNames = await getAgentNames(project);
   } catch (err) {
     console.error("Debate setup failed:", err);
     return Response.json({ error: err.message }, { status: 500 });
@@ -116,8 +133,10 @@ export async function POST(req) {
 
       try {
         // ── 1. Director picks who's in the room and who opens ──
+        // (or flags the message as not actually debate-worthy — see below)
         let participants = emotions;
         let current = emotions[0];
+        let summary = message;
         if (directorModel) {
           const plan = await askDirector(
             openai,
@@ -129,20 +148,53 @@ export async function POST(req) {
               `Available characters and their emotions: ${emotions.join(", ")} ` +
               `(Cheer=joy/optimism, Fear=caution, Buzzy=urgency/stress, Tear=sadness/empathy, ` +
               `Zen=calm, Bubble=social connection, Dozy=rest/recovery).\n` +
-              `Pick 3-5 characters. EVEN IF the news sounds purely good or purely bad, there is still ` +
-              `real tension: you MUST include at least one upbeat/eager voice (Cheer, Buzzy, or Bubble) ` +
-              `AND at least one cautious/reflective voice (Fear, Dozy, Zen, or Tear) — never cast a set ` +
-              `that would just agree with each other start to finish. Choose who speaks first.\n` +
-              `Respond with ONLY this JSON, nothing else: {"participants": ["Name", ...], "first": "Name"}`
+              `First check: is the user's latest message actually something to debate — a real ` +
+              `question, situation, or topic with room for different emotional takes? If it is ` +
+              `instead just a greeting, introduction, their name, or other small talk with nothing ` +
+              `to debate, respond with ONLY this JSON: {"direct": true, "summary": "..."} ` +
+              `(summary: neutral, no more than 12 words).\n` +
+              `Otherwise, pick 3-5 characters. EVEN IF the news sounds purely good or purely bad, ` +
+              `there is still real tension: you MUST include at least one upbeat/eager voice (Cheer, ` +
+              `Buzzy, or Bubble) AND at least one cautious/reflective voice (Fear, Dozy, Zen, or Tear) ` +
+              `— never cast a set that would just agree with each other start to finish. Choose who ` +
+              `speaks first, and summarize the user's current topic neutrally in no more than 12 words.\n` +
+              `Respond with ONLY this JSON, nothing else: ` +
+              `{"participants": ["Name", ...], "first": "Name", "summary": "..."}`
           ).catch(() => null);
+
+          if (plan?.direct) {
+            // Not debate-worthy — Wisey answers directly, no cast, no debate.
+            summary = typeof plan.summary === "string" && plan.summary.trim() ? plan.summary.trim() : message;
+            emit({ type: "cast", participants: [], judge: judge ?? null, summary, direct: true });
+            if (judge) {
+              emit({ type: "turn_start", agent: judge });
+              const reply = await askAgentStream(
+                openai,
+                judge,
+                `You are ${judge}, the warm host of the Moodling council. The user just said: ` +
+                  `"${message}" — this isn't something to debate, it's a greeting, introduction, or ` +
+                  `small talk. Reply naturally and briefly (one short sentence) as yourself, relevant ` +
+                  `to what they said. Do not prefix your reply with your name.`,
+                (delta) => emit({ type: "turn_delta", agent: judge, delta })
+              );
+              transcript.push({ speaker: judge, text: reply });
+              emit({ type: "turn_end", agent: judge, text: reply });
+            }
+            emit({ type: "done" });
+            return;
+          }
+
           if (Array.isArray(plan?.participants)) {
             const chosen = plan.participants.filter((n) => emotions.includes(n));
             if (chosen.length >= 2) participants = chosen;
           }
           if (participants.includes(plan?.first)) current = plan.first;
           else current = participants[0];
+          if (typeof plan?.summary === "string" && plan.summary.trim()) {
+            summary = plan.summary.trim();
+          }
         }
-        emit({ type: "cast", participants, judge: judge ?? null });
+        emit({ type: "cast", participants, judge: judge ?? null, summary });
 
         // ── 2. Debate loop: speak, then director picks next or stops ──
         let speeches = 0;
@@ -235,9 +287,9 @@ export async function POST(req) {
             `You are ${current} in the Moodling council DEBATE about the user's situation — the group ` +
               `is meant to genuinely disagree, not take turns agreeing and complimenting the user. ` +
               `The debate so far:\n${lines()}\n\n` +
-              `Speak as ${current}, fully in character, in 1-2 punchy sentences. Take a clear stance ` +
-              `from your emotion's point of view. ${reactionNote} Never repeat a point already made. ` +
-              `Do not prefix your reply with your name.`,
+              `Speak as ${current}, fully in character, in ${compact ? "ONE short punchy sentence (under 14 words)" : "1-2 punchy sentences"}. ` +
+              `Take a clear stance from your emotion's point of view. ${reactionNote} Never repeat a ` +
+              `point already made. Do not prefix your reply with your name.`,
             (delta) => emit({ type: "turn_delta", agent: current, delta })
           );
           transcript.push({ speaker: current, text });
@@ -287,9 +339,12 @@ export async function POST(req) {
             judge,
             `You are ${judge}, the judge and moderator of the Moodling council. ` +
               `The debate so far:\n${lines()}\n\n` +
-              `Deliver your verdict: in 2-3 sentences, weigh the strongest points made ` +
-              `(mention at least two Moodlings by name), then give the user ONE balanced next step. ` +
-              `Do not prefix your reply with your name.`,
+              (compact
+                ? `Deliver your verdict in ONE short sentence (under 18 words): weigh the debate and ` +
+                  `give the user one balanced next step. Do not prefix your reply with your name.`
+                : `Deliver your verdict: in 2-3 sentences, weigh the strongest points made ` +
+                  `(mention at least two Moodlings by name), then give the user ONE balanced next step. ` +
+                  `Do not prefix your reply with your name.`),
             (delta) => emit({ type: "turn_delta", agent: judge, delta })
           );
           transcript.push({ speaker: judge, text: verdict });

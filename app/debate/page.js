@@ -23,7 +23,33 @@ function bubbleTailOffset(character) {
   const dx = character.left - character.bubble.left;
   const dy = character.top - character.bubble.top;
   const len = Math.hypot(dx, dy) || 1;
-  return { x: (dx / len) * 130, y: Math.max((dy / len) * 40, -14) };
+  return {
+    x: (dx / len) * 150,
+    y: Math.max((dy / len) * 56, -18),
+    angle: Math.atan2(dy, dx) * (180 / Math.PI),
+  };
+}
+
+function highlightCharacterNames(text) {
+  if (!text) return null;
+  const names = CHARACTERS.map((character) => character.name);
+  const pattern = new RegExp(`\\b(${names.join("|")})\\b`, "gi");
+
+  return text.split(pattern).map((part, index) => {
+    const character = CHARACTERS.find(
+      (item) => item.name.toLowerCase() === part.toLowerCase(),
+    );
+    if (!character) return part;
+    return (
+      <mark
+        className="character-mention"
+        style={{ color: character.color }}
+        key={`${part}-${index}`}
+      >
+        {part}
+      </mark>
+    );
+  });
 }
 
 export default function DebatePage() {
@@ -40,8 +66,13 @@ export default function DebatePage() {
   const [wiseyVerdict, setWiseyVerdict] = useState("");
   const [verdictOpen, setVerdictOpen] = useState(false);
   const [verdictChat, setVerdictChat] = useState([]);
-  const [verdictReply, setVerdictReply] = useState("");
 
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("debugDirect")) {
+      setActiveSpeaker("wisey");
+      setResponses({ wisey: "Hey there! Good to see you — what's on your mind today?" });
+    }
+  }, []);
 
   useEffect(() => {
     const resize = () => setScale(Math.min(window.innerWidth / 1600, window.innerHeight / 900));
@@ -151,7 +182,7 @@ export default function DebatePage() {
 
   function openVerdict() {
     setVerdictChat([{ from: "wisey", text: wiseyVerdict }]);
-    setVerdictReply("");
+    setTopic("");
     setVerdictOpen(true);
   }
 
@@ -161,17 +192,26 @@ export default function DebatePage() {
 
   function sendVerdictReply(event) {
     event.preventDefault();
-    const text = verdictReply.trim();
+    const text = topic.trim();
     if (!text) return;
     setVerdictChat((chat) => [...chat, { from: "user", text }]);
-    setVerdictReply("");
+    setTopic("");
     setTimeout(() => {
       setVerdictChat((chat) => [...chat, { from: "wisey", text: "At your service." }]);
       setTimeout(() => setVerdictOpen(false), 1600);
     }, 500);
   }
 
+  function handleTopicSubmit(event) {
+    if (verdictOpen) {
+      sendVerdictReply(event);
+    } else {
+      startDebate(event);
+    }
+  }
+
   const speaker = CHARACTERS.find((character) => character.id === activeSpeaker);
+  const tailOffset = speaker ? bubbleTailOffset(speaker) : null;
 
   return (
     <main className="debate-viewport">
@@ -184,11 +224,9 @@ export default function DebatePage() {
         style={{ objectFit: "fill" }}
       />
 
-      <div className="home-btn">
-        <Link href="/home" aria-label="Home" style={{ display: "flex", width: "100%", height: "100%" }}>
-          <img src="/home.png" alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-        </Link>
-      </div>
+      <Link href="/home" className="home-btn" aria-label="Home">
+        <img src="/home.png" alt="" />
+      </Link>
 
       <div className="debate-stage" style={{ transform: `scale(${scale})` }}>
         {topicSummary && !roundComplete && (
@@ -200,10 +238,12 @@ export default function DebatePage() {
 
         {roundComplete && wiseyVerdict && (
           <button type="button" className="verdict-trigger" onClick={openVerdict}>
-            <div className="hammer-badge">
-              <img src="/hammer.png" alt="" className="hammer-icon" />
+            <div className="verdict-content">
+              <div className="hammer-badge">
+                <img src="/hammer.png" alt="" className="hammer-icon" />
+              </div>
+              <span className="verdict-label">Verdict</span>
             </div>
-            <span className="verdict-label">Verdict</span>
           </button>
         )}
 
@@ -241,12 +281,13 @@ export default function DebatePage() {
             aria-live="polite"
           >
             <strong style={{ color: speaker.color }}>{speaker.name}</strong>
-            <p>{responses[speaker.id]}</p>
+            <p>{highlightCharacterNames(responses[speaker.id])}</p>
             <span
               className="bubble-tail"
               style={{
-                left: `calc(50% + ${bubbleTailOffset(speaker).x}px)`,
-                top: `calc(50% + ${bubbleTailOffset(speaker).y}px)`,
+                left: `calc(50% + ${tailOffset.x}px)`,
+                top: `calc(50% + ${tailOffset.y}px)`,
+                "--tail-angle": `${tailOffset.angle}deg`,
               }}
             />
           </aside>
@@ -324,22 +365,22 @@ export default function DebatePage() {
           </div>
         </aside>
 
-        <form className="topic-form" onSubmit={startDebate}>
+        <form className="topic-form" onSubmit={handleTopicSubmit}>
           <div>
             <input
               id="debate-topic"
-              aria-label="Debate topic"
+              aria-label={verdictOpen ? "Reply to Wisey" : "Debate topic"}
               value={topic}
               onChange={(event) => setTopic(event.target.value)}
-              placeholder="Tell us what’s on your mind…"
+              placeholder={verdictOpen ? "Accept, reject, or say anything…" : "Tell us what’s on your mind…"}
               maxLength={500}
               disabled={loading}
             />
             <button
               type="submit"
               disabled={loading || !topic.trim()}
-              aria-label={loading ? "Starting debate" : "Ask the room"}
-              title={loading ? "Starting debate" : "Ask the room"}
+              aria-label={loading ? "Starting debate" : verdictOpen ? "Reply to Wisey" : "Ask the room"}
+              title={loading ? "Starting debate" : verdictOpen ? "Reply to Wisey" : "Ask the room"}
             >
               <span className="material-symbols-outlined" aria-hidden="true">
                 {loading ? "progress_activity" : "arrow_upward"}
@@ -348,43 +389,32 @@ export default function DebatePage() {
           </div>
           {error && <p className="form-error">{error}</p>}
         </form>
-      </div>
 
-      {verdictOpen && (
-        <div className="verdict-overlay" onClick={closeVerdict}>
-          <div className="verdict-modal" onClick={(event) => event.stopPropagation()}>
-            <button type="button" className="verdict-close" onClick={closeVerdict} aria-label="Close">
-              <span className="material-symbols-outlined" aria-hidden="true">close</span>
-            </button>
+        {verdictOpen && (
+          <div className="verdict-overlay" onClick={closeVerdict}>
+            <div className="verdict-modal" onClick={(event) => event.stopPropagation()}>
+              <button type="button" className="verdict-close" onClick={closeVerdict} aria-label="Close">
+                <span className="material-symbols-outlined" aria-hidden="true">close</span>
+              </button>
 
-            <div className="verdict-gif-panel">
-              <img src="/gif/wisey-verdict.gif" alt="Wisey" />
-            </div>
-
-            <div className="verdict-chat-panel">
-              <div className="verdict-chat-messages">
-                {verdictChat.map((message, index) => (
-                  <div className={`verdict-msg ${message.from}`} key={index}>
-                    {message.from === "wisey" && <strong>Wisey</strong>}
-                    <p>{message.text}</p>
-                  </div>
-                ))}
+              <div className="verdict-gif-panel">
+                <div className="verdict-wisey-title">Wisey</div>
+                <img src="/gif/wisey-verdict.gif" alt="Wisey" />
               </div>
-              <form className="verdict-reply-form" onSubmit={sendVerdictReply}>
-                <input
-                  value={verdictReply}
-                  onChange={(event) => setVerdictReply(event.target.value)}
-                  placeholder="Accept, reject, or say anything…"
-                  aria-label="Reply to Wisey"
-                />
-                <button type="submit" aria-label="Send" disabled={!verdictReply.trim()}>
-                  <span className="material-symbols-outlined" aria-hidden="true">arrow_upward</span>
-                </button>
-              </form>
+
+              <div className="verdict-chat-panel">
+                <div className="verdict-chat-messages">
+                  {verdictChat.map((message, index) => (
+                    <div className={`verdict-msg ${message.from}`} key={index}>
+                      <p>{message.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <style jsx>{`
         .debate-viewport {
@@ -406,30 +436,25 @@ export default function DebatePage() {
           transform-origin: center;
           overflow: hidden;
         }
-        .home-btn {
+        :global(.home-btn) {
           position: fixed;
           z-index: 40;
           top: 20px;
-          left: 20px;
-          width: 56px;
-          height: 56px;
-          padding: 10px;
+          left: 30px;
+          width: 60px;
+          height: 60px;
           display: flex;
           align-items: center;
           justify-content: center;
-          border: 1px solid rgba(255, 255, 255, .55);
-          border-radius: 9999px;
-          background: rgba(255, 250, 233, .58);
-          box-shadow: 0 8px 25px rgba(74, 45, 13, .18);
-          backdrop-filter: blur(10px);
-          transition: transform .18s ease, background .18s ease;
+          transition: transform .18s ease;
         }
-        .home-btn:hover { transform: scale(1.1); background: rgba(255, 250, 233, .78); }
+        :global(.home-btn) img { width: 100%; height: 100%; object-fit: contain; }
+        :global(.home-btn:hover) { transform: scale(1.1); }
         .verdict-trigger {
           position: absolute;
           z-index: 4;
-          left: 50%;
-          top: 48%;
+          left: 45.6%;
+          top: 36%;
           transform: translate(-50%, -50%);
           display: flex;
           flex-direction: column;
@@ -439,48 +464,55 @@ export default function DebatePage() {
           border: none;
           cursor: pointer;
         }
+        .verdict-content {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          animation: hammer-float 2.2s ease-in-out infinite;
+        }
         .hammer-badge {
-          width: 92px;
-          height: 92px;
+          position: relative;
+          width: 120px;
+          height: 120px;
           display: flex;
           align-items: center;
           justify-content: center;
           border-radius: 9999px;
-          background: transparent;
+          background: rgba(255, 250, 233, .4);
+          border: 1px solid rgba(255, 255, 255, .6);
           box-shadow: 0 10px 26px rgba(74, 45, 13, .3);
-          animation: hammer-float 2.2s ease-in-out infinite;
         }
         .hammer-icon {
-          width: 66%;
-          height: 66%;
+          width: 80%;
+          height: 80%;
           object-fit: contain;
+          transform: translateY(-6px) rotate(22deg);
         }
         .verdict-label {
-          font-size: 18px;
-          font-weight: 800;
-          letter-spacing: 1px;
-          color: #4d351e;
+          font-size: 24px;
+          font-weight: 600;
+          line-height: 1;
+          letter-spacing: .5px;
+          color: #ffffff;
           text-shadow: 0 2px 6px rgba(255, 255, 255, .5);
         }
         .verdict-overlay {
-          position: fixed;
-          z-index: 50;
+          position: absolute;
+          z-index: 34;
           inset: 0;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: rgba(30, 20, 8, .45);
-          backdrop-filter: blur(10px);
-          -webkit-backdrop-filter: blur(10px);
         }
         .verdict-modal {
           position: relative;
-          width: min(90vw, 780px);
-          height: min(80vh, 460px);
+          width: min(90vw, 1000px);
+          height: min(80vh, 600px);
           display: flex;
           border-radius: 32px;
           overflow: hidden;
-          background: rgba(255, 250, 240, .92);
+          background: #fff;
           box-shadow: 0 30px 70px rgba(0, 0, 0, .35);
         }
         .verdict-close {
@@ -503,11 +535,18 @@ export default function DebatePage() {
         .verdict-gif-panel {
           flex: 0 0 42%;
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(160deg, #f6e7c4, #e8cf9a);
+          gap: 18px;
         }
-        .verdict-gif-panel img { width: 82%; height: 82%; object-fit: contain; }
+        .verdict-wisey-title {
+          font-size: 32px;
+          font-weight: 900;
+          letter-spacing: .5px;
+          color: ${WISEY_COLOR};
+        }
+        .verdict-gif-panel img { width: 72%; height: 72%; object-fit: contain; }
         .verdict-chat-panel {
           flex: 1;
           min-width: 0;
@@ -521,6 +560,8 @@ export default function DebatePage() {
           overflow-y: auto;
           display: flex;
           flex-direction: column;
+          align-items: center;
+          justify-content: center;
           gap: 10px;
           padding-right: 4px;
         }
@@ -530,54 +571,18 @@ export default function DebatePage() {
           border-radius: 18px;
           font-size: 14px;
           line-height: 1.4;
+          text-align: center;
+          align-self: center;
         }
-        .verdict-msg strong { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 800; color: ${WISEY_COLOR}; }
         .verdict-msg p { margin: 0; }
         .verdict-msg.wisey {
-          align-self: flex-start;
-          border-radius: 5px 18px 18px 18px;
           background: rgba(201, 168, 87, .22);
           color: #4d351e;
         }
         .verdict-msg.user {
-          align-self: flex-end;
-          border-radius: 18px 18px 5px 18px;
           background: #4d351e;
           color: #fff9e9;
         }
-        .verdict-reply-form {
-          flex: 0 0 auto;
-          margin-top: 14px;
-          display: flex;
-          gap: 8px;
-        }
-        .verdict-reply-form input {
-          flex: 1;
-          min-width: 0;
-          height: 42px;
-          padding: 0 15px;
-          outline: none;
-          border: 1px solid rgba(77, 53, 30, .18);
-          border-radius: 16px;
-          background: #fff;
-          font: inherit;
-          font-size: 14px;
-        }
-        .verdict-reply-form button {
-          width: 42px;
-          height: 42px;
-          flex: 0 0 42px;
-          padding: 0;
-          border: 0;
-          border-radius: 9999px;
-          background: #4d351e;
-          color: #fff9e9;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-        }
-        .verdict-reply-form button:disabled { opacity: .5; cursor: default; }
         @keyframes hammer-float {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-10px); }
@@ -626,13 +631,13 @@ export default function DebatePage() {
         .speech-bubble {
           position: absolute;
           z-index: 12;
-          width: 310px;
-          padding: 18px 21px;
+          width: 390px;
+          padding: 22px 28px 25px;
           transform: translate(-50%, -50%);
           color: #3d2d20;
-          border: 2px solid var(--character-color);
-          border-radius: 24px;
-          background: rgba(255, 250, 240, .93);
+          border: 3px solid var(--character-color);
+          border-radius: 30px;
+          background: rgba(255, 250, 240, .88);
           box-shadow: 0 13px 32px rgba(41, 27, 14, .22);
           backdrop-filter: blur(4px);
           -webkit-backdrop-filter: blur(4px);
@@ -640,20 +645,34 @@ export default function DebatePage() {
         }
         .speech-bubble strong {
           display: block;
-          margin-bottom: 3px;
-          font-size: 15px;
+          margin-bottom: 8px;
+          font-size: 18px;
           font-weight: 800;
           letter-spacing: .3px;
         }
-        .speech-bubble p { font-size: 19px; font-weight: 600; line-height: 1.35; }
+        .speech-bubble p { font-size: 20px; font-weight: 650; line-height: 1.42; }
+        .character-mention {
+          padding: 0;
+          background: transparent;
+          font: inherit;
+          font-weight: 850;
+        }
         .bubble-tail {
           position: absolute;
           z-index: -1;
-          width: 20px;
-          height: 20px;
-          transform: translate(-50%, -50%) rotate(45deg);
-          background: rgba(255, 250, 240, .93);
-          border: 2px solid var(--character-color);
+          width: 48px;
+          height: 34px;
+          transform: translate(-50%, -50%) rotate(var(--tail-angle));
+          transform-origin: center;
+          background: var(--character-color);
+          clip-path: polygon(0 13%, 100% 50%, 0 87%, 21% 50%);
+        }
+        .bubble-tail::after {
+          content: "";
+          position: absolute;
+          inset: 3px 5px 3px 3px;
+          background: rgba(255, 250, 240, .96);
+          clip-path: inherit;
         }
         .history-toggle {
           position: absolute;
@@ -791,7 +810,7 @@ export default function DebatePage() {
         .history-reply strong { display: block; margin-bottom: 1px; font-size: 11px; font-weight: 800; }
         .topic-form {
           position: absolute;
-          z-index: 20;
+          z-index: 36;
           left: 50%;
           bottom: 24px;
           width: 650px;
@@ -849,7 +868,7 @@ export default function DebatePage() {
           to { transform: translate(-50%, -53%) rotate(1.5deg) scale(1.035); }
         }
         @media (prefers-reduced-motion: reduce) {
-          .character.is-speaking, .speech-bubble, .hammer-badge { animation: none; }
+          .character.is-speaking, .speech-bubble, .verdict-content { animation: none; }
         }
       `}</style>
     </main>
